@@ -1,0 +1,8 @@
+/dts-v1/;
+/plugin/;
+
+#include "kunlun-mtp-overlay.dtsi"
+
+/ {
+	oplus,dtsi_no = <20119>;
+};
