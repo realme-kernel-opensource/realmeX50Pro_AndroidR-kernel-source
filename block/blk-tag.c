@@ -10,11 +10,6 @@
 
 #include "blk.h"
 
-#if defined(OPLUS_FEATURE_UIFIRST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
-/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-#include "oppo_uxio_first/oppo_uxio_first_opt.h"
-#endif /*VENDOR_EDIT*/
-
 /**
  * blk_queue_find_tag - find a request by its tag and queue
  * @q:	 The request queue for the device
@@ -115,10 +110,6 @@ init_tag_map(struct request_queue *q, struct blk_queue_tag *tags, int depth)
 
 	tags->real_max_depth = depth;
 	tags->max_depth = depth;
-#if defined(OPLUS_FEATURE_UIFIRST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
-/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-	tags->bg_max_depth = BLK_MAX_BG_DEPTH;
-#endif /*VENDOR_EDIT*/
 	tags->tag_index = tag_index;
 	tags->tag_map = tag_map;
 

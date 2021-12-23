@@ -228,11 +228,7 @@ out:
 }
 EXPORT_SYMBOL_GPL(vfs_setxattr);
 
-#ifndef OPLUS_FEATURE_SDCARDFS_SUPPORT
-//huyu@BSP.Storage.Sdcard, 2020/4/8 add for export this api for sdcardfs use
-static
-#endif
-ssize_t
+static ssize_t
 xattr_getsecurity(struct inode *inode, const char *name, void *value,
 			size_t size)
 {
@@ -257,10 +253,7 @@ out:
 out_noalloc:
 	return len;
 }
-#ifdef OPLUS_FEATURE_SDCARDFS_SUPPORT
-//huyu@BSP.Storage.Sdcard, 2020/4/8 add for export this api for sdcardfs use
-EXPORT_SYMBOL_GPL(xattr_getsecurity);
-#endif
+
 /*
  * vfs_getxattr_alloc - allocate memory, if necessary, before calling getxattr
  *

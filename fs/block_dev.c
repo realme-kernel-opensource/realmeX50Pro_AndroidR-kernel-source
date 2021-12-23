@@ -35,10 +35,6 @@
 #include <linux/falloc.h>
 #include <linux/uaccess.h>
 #include "internal.h"
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-#include <linux/oppo_iomonitor/iomonitor.h>
-#endif
 
 struct bdev_inode {
 	struct block_device bdev;
@@ -250,10 +246,6 @@ __blkdev_direct_IO_simple(struct kiocb *iocb, struct iov_iter *iter,
 		bio.bi_opf = dio_bio_write_op(iocb);
 		task_io_account_write(ret);
 	}
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-	/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-	iomonitor_update_rw_stats(DIO_WRITE, file, ret);
-#endif
 
 	qc = submit_bio(&bio);
 	for (;;) {
@@ -396,10 +388,6 @@ __blkdev_direct_IO(struct kiocb *iocb, struct iov_iter *iter, int nr_pages)
 		} else {
 			bio->bi_opf = dio_bio_write_op(iocb);
 			task_io_account_write(bio->bi_iter.bi_size);
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-			iomonitor_update_rw_stats(DIO_WRITE, file, bio->bi_iter.bi_size);
-#endif
 		}
 
 		dio->size += bio->bi_iter.bi_size;
@@ -1475,8 +1463,10 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 	 */
 	if (!for_part) {
 		ret = devcgroup_inode_permission(bdev->bd_inode, perm);
-		if (ret != 0)
+		if (ret != 0) {
+			bdput(bdev);
 			return ret;
+		}
 	}
 
  restart:
@@ -1545,10 +1535,8 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 				goto out_clear;
 			BUG_ON(for_part);
 			ret = __blkdev_get(whole, mode, 1);
-			if (ret) {
-				bdput(whole);
+			if (ret)
 				goto out_clear;
-			}
 			bdev->bd_contains = whole;
 			bdev->bd_part = disk_get_part(disk, partno);
 			if (!(disk->flags & GENHD_FL_UP) ||
@@ -1598,6 +1586,7 @@ static int __blkdev_get(struct block_device *bdev, fmode_t mode, int for_part)
 	disk_unblock_events(disk);
 	put_disk_and_module(disk);
  out:
+	bdput(bdev);
 
 	return ret;
 }
@@ -1682,9 +1671,6 @@ int blkdev_get(struct block_device *bdev, fmode_t mode, void *holder)
 		mutex_unlock(&bdev->bd_mutex);
 		bdput(whole);
 	}
-
-    if (res)
-		bdput(bdev);
 
 	return res;
 }

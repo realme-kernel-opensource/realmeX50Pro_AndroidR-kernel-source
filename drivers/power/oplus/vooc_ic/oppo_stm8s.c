@@ -41,7 +41,7 @@
 
 //#include <mt-plat/battery_meter.h>
 #include <linux/module.h>
-#include <soc/oppo/device_info.h>
+#include <soc/oplus/device_info.h>
 
 #else
 #include <linux/i2c.h>
@@ -60,7 +60,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
-#include <soc/oppo/device_info.h>
+#include <soc/oplus/device_info.h>
 #endif
 #include "oppo_vooc_fw.h"
 
@@ -426,7 +426,7 @@ update_fw:
 		/*rc = i2c_smbus_write_i2c_block_data(chip->client, 0x01, 2, &addr_buf[0]);*/
 		rc = oppo_vooc_i2c_write(chip->client, 0x01, 2, &addr_buf[0]);
 		if (rc < 0) {
-			chg_err(" stm8s_update_fw, i2c_write 0x01 error  [i=%d]\n", i);
+			chg_err(" stm8s_update_fw, i2c_write 0x01 error\n");
 			goto update_fw_err;
 		}
 
@@ -540,7 +540,6 @@ static int stm8s_get_fw_verion_from_ic(struct oppo_vooc_chip *chip)
 static int stm8s_fw_check_then_recover(struct oppo_vooc_chip *chip)
 {
 	int update_result = 0;
-	int try_count = 5;
 	int ret = 0;
 
 	if (!chip->firmware_data) {
@@ -559,26 +558,13 @@ static int stm8s_fw_check_then_recover(struct oppo_vooc_chip *chip)
 		opchg_set_clock_active(chip);
 		chip->mcu_boot_by_gpio = true;
 		msleep(10);
-		opchg_set_reset_active_force(chip);
+		opchg_set_reset_active(chip);
 		chip->mcu_update_ing = true;
 		msleep(2500);
 		chip->mcu_boot_by_gpio = false;
 		opchg_set_clock_sleep(chip);
 		if (stm8s_fw_check_frontline(chip) == FW_CHECK_FAIL || stm8s_fw_check_lastline(chip) == FW_CHECK_FAIL) {
-			do {
-				update_result = stm8s_fw_update(chip);
-				if (!update_result)
-					break;
-				opchg_set_clock_active(chip);
-				chip->mcu_boot_by_gpio = true;
-				msleep(10);
-				chip->mcu_update_ing = false;
-				opchg_set_reset_active_force(chip);
-				chip->mcu_update_ing = true;
-				msleep(2500);
-				chip->mcu_boot_by_gpio = false;
-				opchg_set_clock_sleep(chip);
-			} while ((update_result) && (--try_count > 0));
+			stm8s_fw_update(chip);
 		} else {
 			chip->vooc_fw_check = true;
 			chg_debug("  fw check ok\n");

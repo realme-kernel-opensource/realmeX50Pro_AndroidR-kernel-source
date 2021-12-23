@@ -29,7 +29,6 @@
 /* Gou shengjun@PSW.MM.Display.Lcd.Stability, 2018-05-31
  * add for drm notifier for display connect
 */
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
 #include <linux/msm_drm_notify.h>
 #include <linux/notifier.h>
 #include "oppo_display_private_api.h"
@@ -44,14 +43,6 @@ __attribute__((weak)) void sec_refresh_switch(int fps)
     return;
 }
 #endif /* OPLUS_BUG_STABILITY */
-
-#ifdef OPLUS_FEATURE_TP_BASIC
-//Wenjie.Zhong@PSW.BSP.TP, 2020/12/09, Add for notify TP display fps change
-__attribute__((weak)) void lcd_tp_refresh_switch(int fps)
-{
-    return;
-}
-#endif /* OPLUS_FEATURE_TP_BASIC*/
 
 /* Add for solve sau issue*/
 extern int lcd_closebl_flag;
@@ -258,19 +249,6 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 	}
 
 #ifdef OPLUS_BUG_STABILITY
-/* Gou shengjun@PSW.MM.Display.LCD.Stable,2018-06-27
- * Add key log for debug
-*/
-	if ((bl_lvl == 0 && panel->bl_config.bl_level != 0) ||
-	    (bl_lvl != 0 && panel->bl_config.bl_level == 0)){
-		pr_err("backlight level changed %d -> %d\n",
-		       panel->bl_config.bl_level, bl_lvl);
-/* Song.Gao@PSW.MM.Display.LCD.Stable,2019-11-22,Add key log for debug */
-	}else if (panel->bl_config.bl_level == 1){
-		pr_err("aod backlight level changed %d -> %d\n",
-		      panel->bl_config.bl_level, bl_lvl);
-	}
-
 	/* Add some delay to avoid screen flash */
 	if (panel->need_power_on_backlight && bl_lvl) {
 		panel->need_power_on_backlight = false;
@@ -740,7 +718,6 @@ static bool dsi_display_validate_reg_read(struct dsi_panel *panel)
 			cnt += scnprintf(payload + cnt, sizeof(payload) - cnt, "[%02x] ", config->return_buf[i]);
 
 		DRM_ERROR("ESD check failed: %s\n", payload);
-		mm_fb_display_kevent(payload, MM_FB_KEY_RATELIMIT_1H, "ESD check failed");
 	}
 #endif  /*OPLUS_BUG_STABILITY*/
 
@@ -972,7 +949,6 @@ static int dsi_display_status_reg_read(struct dsi_display *display)
 			}
 		}
 
-		DSI_INFO("0xE9 = %02x, %02x, %02x, %02x\n", register_e9[0], register_e9[1], register_e9[2], register_e9[3]);
 		if ((register_e9[3] == 0x10) || (register_e9[3] == 0x30) || (register_e9[3] == 0x31) || (register_e9[3] == 0x32) || (register_e9[3] == 0x33)) {
 			if ((register_e9[3] == 0x10) || (register_e9[3] == 0x30) || (register_e9[3] == 0x32))
 				DSI_ERR("ESD color dot error\n");
@@ -1079,7 +1055,7 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 		rc = -EINVAL;
 		goto release_panel_lock;
 	}
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, status_mode, te_check_override);
 
 	if (te_check_override && gpio_is_valid(dsi_display->disp_te_gpio))
 		status_mode = ESD_MODE_PANEL_TE;
@@ -1127,7 +1103,7 @@ exit:
 
 release_panel_lock:
 	dsi_panel_release_panel_lock(panel);
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, rc);
 
 	return rc;
 }
@@ -1151,6 +1127,9 @@ static int dsi_display_cmd_prepare(const char *cmd_buf, u32 cmd_buf_len,
 		       cmd->msg.tx_len, payload_len);
 		return -EINVAL;
 	}
+
+	if (cmd->last_command)
+		cmd->msg.flags |= MIPI_DSI_MSG_LASTCOMMAND;
 
 	for (i = 0; i < cmd->msg.tx_len; i++)
 		payload[i] = cmd_buf[7 + i];
@@ -1341,6 +1320,7 @@ int dsi_display_set_power(struct drm_connector *connector,
 		return rc;
 	}
 
+	SDE_EVT32(display->panel->power_mode, power_mode, rc);
 	DSI_DEBUG("Power mode transition from %d to %d %s",
 			display->panel->power_mode, power_mode,
 			rc ? "failed" : "successful");
@@ -1610,7 +1590,6 @@ static ssize_t debugfs_esd_trigger_check(struct file *file,
 	display->esd_trigger = esd_trigger;
 
 	if (display->esd_trigger) {
-		DSI_INFO("ESD attack triggered by user\n");
 		rc = dsi_panel_trigger_esd_attack(display->panel);
 		if (rc) {
 			DSI_ERR("Failed to trigger ESD attack\n");
@@ -1669,16 +1648,14 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 
 	if (!strcmp(buf, "te_signal_check\n")) {
 		if (display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
-			DSI_INFO("TE based ESD check for Video Mode panels is not allowed\n");
+			DSI_ERR("TE based ESD check for Video Mode panels is not allowed\n");
 			goto error;
 		}
-		DSI_INFO("ESD check is switched to TE mode by user\n");
 		esd_config->status_mode = ESD_MODE_PANEL_TE;
 		dsi_display_change_te_irq_status(display, true);
 	}
 
 	if (!strcmp(buf, "reg_read\n")) {
-		DSI_INFO("ESD check is switched to reg read by user\n");
 		rc = dsi_panel_parse_esd_reg_read_configs(display->panel);
 		if (rc) {
 			DSI_ERR("failed to alter esd check mode,rc=%d\n",
@@ -1800,276 +1777,6 @@ static const struct file_operations esd_check_mode_fops = {
 	.read = debugfs_read_esd_check_mode,
 };
 
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-static int panel_debug_base_open(struct inode *inode, struct file *file)
-{
-	/* non-seekable */
-	file->f_mode &= ~(FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
-	file->private_data = inode->i_private;
-	return 0;
-}
-
-static int panel_debug_base_release(struct inode *inode, struct file *file)
-{
-	return 0;
-}
-
-#define PANEL_REG_MAX_OFFSET 1024 // FIXME
-
-static ssize_t panel_debug_base_offset_write(struct file *file,
-		    const char __user *user_buf, size_t count, loff_t *ppos)
-{
-	struct dsi_display *display = file->private_data;
-	u32 off, cnt;
-	char buf[64];
-
-	if (!display)
-		return -ENODEV;
-
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, user_buf, count))
-		return -EFAULT;
-
-	buf[count] = 0;	/* end of string */
-
-	if (sscanf(buf, "%x %u", &off, &cnt) != 2)
-		return -EINVAL;
-
-	if (off > PANEL_REG_MAX_OFFSET)
-		return -EINVAL;
-
-	if (cnt > (PANEL_REG_MAX_OFFSET - off))
-		cnt = PANEL_REG_MAX_OFFSET - off;
-
-	display->off = off;
-	display->cnt = cnt;
-
-	pr_debug("offset=%x cnt=%d\n", off, cnt);
-
-	return count;
-}
-
-static ssize_t panel_debug_base_offset_read(struct file *file,
-			char __user *buff, size_t count, loff_t *ppos)
-{
-	struct dsi_display *display = file->private_data;
-	int len;
-	char buf[64];
-
-	if (!display)
-		return -ENODEV;
-
-	if (*ppos)
-		return 0;	/* the end */
-
-	len = snprintf(buf, sizeof(buf), "0x%02x %x\n", display->off, display->cnt);
-
-	if (len < 0 || len >= sizeof(buf))
-		return -EINVAL;
-
-	if (count < sizeof(buf))
-		return -EINVAL;
-	if (copy_to_user(buff, buf, len))
-		return -EFAULT;
-
-	*ppos += len;	/* increase offset */
-	return len;
-}
-
-/* Hex number + whitespace */
-#define NEXT_VALUE_OFFSET 3
-
-#define PANEL_CMD_MIN_TX_COUNT 2
-
-
-static ssize_t panel_debug_base_reg_write(struct file *file,
-		const char __user *user_buf, size_t count, loff_t *ppos)
-{
-	struct dsi_display *display = file->private_data;
-	char buf[64];
-	char reg[64];
-	u32 len = 0, value = 0;
-	char *bufp;
-	bool state = false;
-	int rc;
-
-	struct dsi_cmd_desc cmds = {
-		{ 0 },	// msg
-		1,	// last
-		0	// wait
-	};
-#ifndef IRIS5_ABYP_LIGHTUP
-	struct dsi_panel_cmd_set cmdset = {
-		.state = DSI_CMD_SET_STATE_HS,
-		.count = 1,
-		.cmds = &cmds,
-	};
-#endif
-
-	if (!display)
-		return -ENODEV;
-
-	/* get command string from user */
-	if (count >= sizeof(buf))
-		return -EINVAL;
-
-	if (copy_from_user(buf, user_buf, count))
-		return -EFAULT;
-
-	buf[count] = 0;	/* end of string */
-
-	bufp = buf;
-	/* End of a hex value in given string */
-	bufp[NEXT_VALUE_OFFSET - 1] = 0;
-	while (kstrtouint(bufp, 16, &value) == 0) {
-		reg[len++] = value;
-		if (len >= sizeof(reg)) {
-			pr_err("wrong input reg len\n");
-			return -EINVAL;
-		}
-		bufp += NEXT_VALUE_OFFSET;
-		if ((bufp >= (buf + count)) || (bufp < buf)) {
-			pr_warn("%s,buffer out-of-bounds\n", __func__);
-			break;
-		}
-		/* End of a hex value in given string */
-		if ((bufp + NEXT_VALUE_OFFSET - 1) < (buf + count))
-			bufp[NEXT_VALUE_OFFSET - 1] = 0;
-	}
-	if (len < PANEL_CMD_MIN_TX_COUNT) {
-		pr_err("wrong input reg len\n");
-		return -EINVAL;
-	}
-
-	cmds.msg.type = display->cmd_data_type;
-	cmds.msg.flags = MIPI_DSI_MSG_LASTCOMMAND;
-	cmds.msg.tx_len = len;
-	cmds.msg.tx_buf = reg;
-
-	mutex_lock(&display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(display, &state);
-	if (!rc && state) {
-#ifdef IRIS5_ABYP_LIGHTUP
-		rc = display->host.ops->transfer(&display->host, &cmds.msg);
-#else
-		iris5_panel_cmd_passthrough(display->panel, &cmdset);
-#endif
-	}
-	mutex_unlock(&display->display_lock);
-
-	return rc ? rc : count;
-}
-
-#define PANEL_REG_ADDR_LEN 8
-#define PANEL_REG_FORMAT_LEN 5
-
-static ssize_t panel_debug_base_reg_read(struct file *file,
-			char __user *user_buf, size_t count, loff_t *ppos)
-{
-	struct dsi_display *display = file->private_data;
-	u32 i, len = 0, reg_buf_len = 0;
-	char *panel_reg_buf, *rx_buf;
-	int rc;
-	bool state = false;
-	char panel_reg[2] = { 0 };
-	struct dsi_cmd_desc cmds = {
-		{ 0 },	// msg
-		1,	// last
-		0	// wait
-	};
-#ifndef IRIS5_ABYP_LIGHTUP
-	struct dsi_panel_cmd_set cmdset = {
-		.state = DSI_CMD_SET_STATE_HS,
-		.count = 1,
-		.cmds = &cmds,
-	};
-#endif
-
-	if (!display)
-		return -ENODEV;
-	if (!display->cnt)
-		return 0;
-	if (*ppos)
-		return 0;	/* the end */
-
-	/* '0x' + 2 digit + blank = 5 bytes for each number */
-	reg_buf_len = (display->cnt * PANEL_REG_FORMAT_LEN)
-		    + PANEL_REG_ADDR_LEN + 1;
-	if (count < reg_buf_len)
-		return -EINVAL;
-
-	rx_buf = kzalloc(display->cnt, GFP_KERNEL);
-	panel_reg_buf = kzalloc(reg_buf_len, GFP_KERNEL);
-
-	if (!rx_buf || !panel_reg_buf) {
-		pr_err("not enough memory to hold panel reg dump\n");
-		rc = -ENOMEM;
-		goto read_reg_fail;
-	}
-
-	panel_reg[0] = display->off;
-
-	cmds.msg.type = MIPI_DSI_DCS_READ;
-	cmds.msg.flags = MIPI_DSI_MSG_LASTCOMMAND | MIPI_DSI_MSG_REQ_ACK;
-	cmds.msg.tx_len = 2;
-	cmds.msg.tx_buf = panel_reg;
-	cmds.msg.rx_len = display->cnt;
-	cmds.msg.rx_buf = rx_buf;
-
-	mutex_lock(&display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(display, &state);
-	if (!rc && state) {
-#ifdef IRIS5_ABYP_LIGHTUP
-		rc = display->host.ops->transfer(&display->host, &cmds.msg);
-#else
-		iris5_panel_cmd_passthrough(display->panel, &cmdset);
-#endif
-	}
-	mutex_unlock(&display->display_lock);
-
-	if (rc)
-		goto read_reg_fail;
-
-	len = scnprintf(panel_reg_buf, reg_buf_len, "0x%02x: ", display->off);
-
-	for (i = 0; (len < reg_buf_len) && (i < display->cnt); i++)
-		len += scnprintf(panel_reg_buf + len, reg_buf_len - len,
-				"0x%02x ", rx_buf[i]);
-
-	if (len)
-		panel_reg_buf[len - 1] = '\n';
-
-	if (copy_to_user(user_buf, panel_reg_buf, len)) {
-		rc = -EFAULT;
-		goto read_reg_fail;
-	}
-
-	*ppos += len;	/* increase offset */
-	rc = len;
-
-read_reg_fail:
-	kfree(rx_buf);
-	kfree(panel_reg_buf);
-	return rc;
-}
-
-static const struct file_operations panel_off_fops = {
-	.open = panel_debug_base_open,
-	.release = panel_debug_base_release,
-	.read = panel_debug_base_offset_read,
-	.write = panel_debug_base_offset_write,
-};
-
-static const struct file_operations panel_reg_fops = {
-	.open = panel_debug_base_open,
-	.release = panel_debug_base_release,
-	.read = panel_debug_base_reg_read,
-	.write = panel_debug_base_reg_write,
-};
-#endif
-
 static int dsi_display_debugfs_init(struct dsi_display *display)
 {
 	int rc = 0;
@@ -2189,36 +1896,6 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 		       display->name);
 		goto error_remove_dir;
 	}
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-	if (iris_get_feature()) {
-		display->off = 0x0a;
-		display->cnt = 1;
-		display->cmd_data_type = MIPI_DSI_DCS_LONG_WRITE;
-
-		dump_file = debugfs_create_x8("cmd_data_type", 0600, dir, &display->cmd_data_type);
-		if (IS_ERR_OR_NULL(dump_file))
-			pr_err("[%s] debugfs create panel cmd_data_type file failed, rc=%ld\n",
-			       display->name, PTR_ERR(dump_file));
-
-		dump_file = debugfs_create_file("off",
-					0600,
-					dir,
-					display,
-					&panel_off_fops);
-		if (IS_ERR_OR_NULL(dump_file))
-			pr_err("[%s] debugfs create panel off file failed, rc=%ld\n",
-			       display->name, PTR_ERR(dump_file));
-
-		dump_file = debugfs_create_file("reg",
-					0600,
-					dir,
-					display,
-					&panel_reg_fops);
-		if (IS_ERR_OR_NULL(dump_file))
-			pr_err("[%s] debugfs create panel reg file failed, rc=%ld\n",
-		      	 display->name, PTR_ERR(dump_file));
-	}
-#endif
 
 	display->root = dir;
 	dsi_parser_dbg_init(display->parser, dir);
@@ -3377,6 +3054,19 @@ static int dsi_display_broadcast_cmd(struct dsi_display *display,
 		goto error;
 	}
 
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if (ctrl == m_ctrl)
+			continue;
+
+		rc = dsi_ctrl_clear_slave_dma_status(ctrl->ctrl, flags);
+		if (rc) {
+			DSI_ERR("[%s] clear interrupt status failed, rc=%d\n",
+				display->name, rc);
+			goto error;
+		}
+	}
+
 error:
 	dsi_display_mask_overflow(display, m_flags, false);
 	return rc;
@@ -4344,7 +4034,6 @@ error:
 	return rc;
 }
 
-
 static int dsi_display_res_init(struct dsi_display *display)
 {
 	int rc = 0;
@@ -4675,6 +4364,7 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 		DSI_DEBUG("byte_clk_rate = %llu, byte_intf_clk_rate = %llu\n",
 			  byte_clk_rate, byte_intf_clk_rate);
 		DSI_DEBUG("pclk_rate = %llu\n", pclk_rate);
+		SDE_EVT32(i, bit_rate, byte_clk_rate, pclk_rate);
 
 		ctrl->clk_freq.byte_clk_rate = byte_clk_rate;
 		ctrl->clk_freq.byte_intf_clk_rate = byte_intf_clk_rate;
@@ -5165,6 +4855,9 @@ static int dsi_display_get_dfps_timing(struct dsi_display *display,
 				DSI_V_TOTAL(timing),
 				timing->v_front_porch,
 				&adj_mode->timing.v_front_porch);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, DSI_DFPS_IMMEDIATE_VFP,
+			curr_refresh_rate, timing->refresh_rate,
+			timing->v_front_porch, adj_mode->timing.v_front_porch);
 		break;
 
 	case DSI_DFPS_IMMEDIATE_HFP:
@@ -5175,6 +4868,9 @@ static int dsi_display_get_dfps_timing(struct dsi_display *display,
 				DSI_H_TOTAL_DSC(timing),
 				timing->h_front_porch,
 				&adj_mode->timing.h_front_porch);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, DSI_DFPS_IMMEDIATE_HFP,
+			curr_refresh_rate, timing->refresh_rate,
+			timing->h_front_porch, adj_mode->timing.h_front_porch);
 		if (!rc)
 			adj_mode->timing.h_front_porch *= display->ctrl_count;
 		break;
@@ -5251,7 +4947,7 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 		return -EINVAL;
 	}
 
-	SDE_EVT32(mode->dsi_mode_flags);
+	SDE_EVT32(mode->dsi_mode_flags, mode->panel_mode);
 	if (mode->dsi_mode_flags & DSI_MODE_FLAG_POMS) {
 		display->config.panel_mode = mode->panel_mode;
 		display->panel->panel_mode = mode->panel_mode;
@@ -5379,7 +5075,7 @@ static int _dsi_display_dev_init(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	if (!display->panel_node)
+	if (!display->panel_node && !display->fw)
 		return 0;
 
 	mutex_lock(&display->display_lock);
@@ -5464,6 +5160,7 @@ int dsi_display_cont_splash_config(void *dsi_display)
 	/* Update splash status for clock manager */
 	dsi_display_clk_mngr_update_splash_status(display->clk_mngr,
 				display->is_cont_splash_enabled);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, display->is_cont_splash_enabled);
 
 	/* Set up ctrl isr before enabling core clk */
 	dsi_display_ctrl_isr_configure(display, true);
@@ -5539,6 +5236,7 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display)
 	dsi_display_clk_mngr_update_splash_status(display->clk_mngr,
 				display->is_cont_splash_enabled);
 
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_cont_splash_enabled);
 	return rc;
 }
 
@@ -5632,7 +5330,7 @@ static int dsi_display_bind(struct device *dev,
 				drm, display);
 		return -EINVAL;
 	}
-	if (!display->panel_node)
+	if (!display->panel_node && !display->fw)
 		return 0;
 
 	if (!display->fw)
@@ -5654,7 +5352,7 @@ static int dsi_display_bind(struct device *dev,
 /* Gou shengjun@PSW.MM.Display.LCD.Stability,2018/06/05
  * Add for save select panel and give different feature
 */
-	if(0 != oppo_set_display_vendor(display)) {
+	if(oppo_set_display_vendor(display)) {
 		pr_err("maybe send a null point to oppo display manager\n");
 	}
 
@@ -5933,7 +5631,6 @@ static int dsi_display_init(struct dsi_display *display)
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-
 	if (rc)
 		DSI_ERR("component add failed, rc=%d\n", rc);
 
@@ -5952,7 +5649,13 @@ static void dsi_display_firmware_display(const struct firmware *fw,
 			fw->size);
 
 		display->fw = fw;
-		display->name = "dsi_firmware_display";
+
+		if (!strcmp(display->display_type, "primary"))
+			display->name = "dsi_firmware_display";
+
+		else if (!strcmp(display->display_type, "secondary"))
+			display->name = "dsi_firmware_display_secondary";
+
 	} else {
 		DSI_INFO("no firmware available, fallback to device node\n");
 	}
@@ -6043,10 +5746,17 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 
 	/* initialize display in firmware callback */
 	if (!boot_disp->boot_disp_en && IS_ENABLED(CONFIG_DSI_PARSER)) {
-		firm_req = !request_firmware_nowait(
-			THIS_MODULE, 1, "dsi_prop",
-			&pdev->dev, GFP_KERNEL, display,
-			dsi_display_firmware_display);
+		if (!strcmp(display->display_type, "primary"))
+			firm_req = !request_firmware_nowait(
+				THIS_MODULE, 1, "dsi_prop",
+				&pdev->dev, GFP_KERNEL, display,
+				dsi_display_firmware_display);
+
+		else if (!strcmp(display->display_type, "secondary"))
+			firm_req = !request_firmware_nowait(
+				THIS_MODULE, 1, "dsi_prop_sec",
+				&pdev->dev, GFP_KERNEL, display,
+				dsi_display_firmware_display);
 	}
 
 	if (!firm_req) {
@@ -6111,7 +5821,8 @@ int dsi_display_get_num_of_displays(void)
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
 		struct dsi_display *display = boot_displays[i].disp;
 
-		if (display && display->panel_node)
+		if ((display && display->panel_node) ||
+					(display && display->fw))
 			count++;
 	}
 
@@ -6130,7 +5841,8 @@ int dsi_display_get_active_displays(void **display_array, u32 max_display_count)
 	for (index = 0; index < MAX_DSI_ACTIVE_DISPLAY; index++) {
 		struct dsi_display *display = boot_displays[index].disp;
 
-		if (display && display->panel_node)
+		if ((display && display->panel_node) ||
+					(display && display->fw))
 			display_array[count++] = display;
 	}
 
@@ -7233,10 +6945,13 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 				dyn_clk_caps->maintain_const_fps) {
 				DSI_DEBUG("Mode switch is seamless variable refresh\n");
 				adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_VRR;
-				SDE_EVT32(cur_mode->timing.refresh_rate,
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE1,
+					cur_mode->timing.refresh_rate,
 					adj_mode->timing.refresh_rate,
 					cur_mode->timing.h_front_porch,
-					adj_mode->timing.h_front_porch);
+					adj_mode->timing.h_front_porch,
+					cur_mode->timing.v_front_porch,
+					adj_mode->timing.v_front_porch);
 			}
 		}
 
@@ -7254,8 +6969,9 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 
 				adj_mode->dsi_mode_flags |=
 						DSI_MODE_FLAG_DYN_CLK;
-				SDE_EVT32(cur_mode->pixel_clk_khz,
-						adj_mode->pixel_clk_khz);
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE2,
+					cur_mode->pixel_clk_khz,
+					adj_mode->pixel_clk_khz);
 			}
 		}
 	}
@@ -7367,15 +7083,10 @@ int dsi_display_set_mode(struct dsi_display *display,
 		goto error;
 	}
 
-        #ifdef OPLUS_BUG_STABILITY
-        //Zengpeng.Chen@PSW.BSP.TP, 2019/09/29, Add for notify TP display fps change
+#ifdef OPLUS_BUG_STABILITY
+//Zengpeng.Chen@PSW.BSP.TP, 2019/09/29, Add for notify TP display fps change
 	sec_refresh_switch(timing.refresh_rate);
-        #endif /* OPLUS_BUG_STABILITY */
-
-#ifdef OPLUS_FEATURE_TP_BASIC
-//Wenjie.Zhong@PSW.BSP.TP, 2020/12/09, Add for notify TP display fps change
-	lcd_tp_refresh_switch(timing.refresh_rate);
-#endif /* OPLUS_FEATURE_TP_BASIC*/
+#endif /* OPLUS_BUG_STABILITY */
 
 	DSI_INFO("mdp_transfer_time_us=%d us\n",
 			adj_mode.priv_info->mdp_transfer_time_us);

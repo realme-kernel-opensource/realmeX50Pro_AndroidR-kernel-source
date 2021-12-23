@@ -156,11 +156,6 @@ struct fuse_file {
 
 	/** Has flock been performed on this file? */
 	bool flock:1;
-
-#ifdef CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT
-	/* the read write file */
-	struct file *rw_lower_file;
-#endif /* CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT */
 };
 
 /** One input argument of a request */
@@ -218,9 +213,6 @@ struct fuse_out {
 
 	/** Array of arguments */
 	struct fuse_arg args[2];
-
-	/* Path used for completing d_canonical_path */
-	struct path *canonical_path;
 };
 
 /** FUSE page descriptor */
@@ -243,15 +235,7 @@ struct fuse_args {
 		unsigned argvar:1;
 		unsigned numargs;
 		struct fuse_arg args[2];
-
-		/* Path used for completing d_canonical_path */
-		struct path *canonical_path;
 	} out;
-#ifdef CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT
-	/** fuse shortcircuit file  */
-	struct file *private_lower_rw_file;
-	char *iname;
-#endif /* CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT */
 };
 
 #define FUSE_ARGS(args) struct fuse_args args = {}
@@ -387,6 +371,9 @@ struct fuse_req {
 	/** Inode used in the request or NULL */
 	struct inode *inode;
 
+	/** Path used for completing d_canonical_path */
+	struct path *canonical_path;
+
 	/** AIO control block */
 	struct fuse_io_priv *io;
 
@@ -398,12 +385,6 @@ struct fuse_req {
 
 	/** Request is stolen from fuse_file->reserved_req */
 	struct file *stolen_file;
-
-#ifdef CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT
-	/** fuse shortcircuit file  */
-	struct file *private_lower_rw_file;
-	char *iname;
-#endif /* CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT */
 };
 
 struct fuse_iqueue {
@@ -576,10 +557,6 @@ struct fuse_conn {
 	/** handle fs handles killing suid/sgid/cap on write/chown/trunc */
 	unsigned handle_killpriv:1;
 
-#ifdef CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT
-	/** Shortcircuited IO. */
-	unsigned shortcircuit_io:1;
-#endif /* CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT */
 	/*
 	 * The following bitfields are only for optimization purposes
 	 * and hence races in setting them will not cause malfunction
@@ -1022,14 +999,5 @@ extern const struct xattr_handler *fuse_no_acl_xattr_handlers[];
 struct posix_acl;
 struct posix_acl *fuse_get_acl(struct inode *inode, int type);
 int fuse_set_acl(struct inode *inode, struct posix_acl *acl, int type);
-
-#ifdef CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT
-extern int sct_mode;
-#endif /* CONFIG_OPLUS_FEATURE_FUSE_FS_SHORTCIRCUIT */
-#ifdef CONFIG_OPLUS_FEATURE_ACM
-//Yuwei.Guan@BSP.Kernel.FS,2020/07/08, Add for acm
-void acm_fuse_init_cache(void);
-void acm_fuse_free_cache(void);
-#endif
 
 #endif /* _FS_FUSE_I_H */

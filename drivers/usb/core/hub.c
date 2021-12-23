@@ -4455,7 +4455,7 @@ static int hub_set_address(struct usb_device *udev, int devnum)
  * device says it supports the new USB 2.0 Link PM errata by setting the BESL
  * support bit in the BOS descriptor.
  */
- #ifndef VENDOR_EDIT//Kun.Zhang@BSP.CHG.Basic	2019/09/25	Delete for otg
+#ifndef VENDOR_EDIT//Kun.Zhang@BSP.CHG.Basic	2019/09/25	Delete for otg
 static void hub_set_initial_usb2_lpm_policy(struct usb_device *udev)
 {
 	struct usb_hub *hub = usb_hub_to_struct_hub(udev->parent);

@@ -31,11 +31,12 @@ union futex_key {
 	struct {
 		u64 i_seq;
 		unsigned long pgoff;
+		unsigned int offset;
 	} shared;
 	struct {
 		union {
-		struct mm_struct *mm;
-		u64 __tmp;
+			struct mm_struct *mm;
+			u64 __tmp;
 		};
 		unsigned long address;
 		unsigned int offset;

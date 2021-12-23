@@ -16,12 +16,6 @@
 #define SCHED_CPUFREQ_EARLY_DET (1U << 6)
 #define SCHED_CPUFREQ_CONTINUE (1U << 8)
 
-#ifdef OPLUS_FEATURE_UIFIRST
-// XuHaifeng@BSP.KERNEL.PERFORMANCE, 2020/08/18, Add for UIFirst(slide boost)
-#define SCHED_CPUFREQ_RESET (1U << 7)
-#define SCHED_CPUFREQ_BOOST (1U << 9)
-#endif /* OPLUS_FEATURE_UIFIRST */
-
 #ifdef CONFIG_CPU_FREQ
 struct cpufreq_policy;
 

@@ -41,7 +41,7 @@
 #include <linux/notifier.h>
 #endif
 
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
 #include <linux/msm_drm_notify.h>
 #endif
 
@@ -54,11 +54,11 @@
 /*******Part0:LOG TAG Declear************************/
 #define TPD_PRINT_POINT_NUM 150
 #define TPD_DEVICE "touchpanel"
-#define TPD_INFO(a, arg...)  pr_err("[TP]"TPD_DEVICE ": " a, ##arg)
+#define TPD_INFO(a, arg...)  pr_info("[TP]"TPD_DEVICE ": " a, ##arg)
 #define TPD_DEBUG(a, arg...)\
     do{\
         if (LEVEL_DEBUG == tp_debug)\
-            pr_err("[TP]"TPD_DEVICE ": " a, ##arg);\
+            pr_warning("[TP]"TPD_DEVICE ": " a, ##arg);\
     }while(0)
 
 #define TPD_DETAIL(a, arg...)\
@@ -88,18 +88,32 @@ static int pm_qos_state = 0;
 #define PM_QOS_TOUCH_WAKEUP_VALUE 400
 #endif
 
+uint8_t DouTap_enable = 0;               // double tap
+uint8_t UpVee_enable  = 0;               // ^
+uint8_t DownVee_enable  = 0;             // v
+uint8_t LeftVee_enable = 0;              // <
+uint8_t RightVee_enable = 0;             // >
+uint8_t Circle_enable = 0;               // O
+uint8_t DouSwip_enable = 0;              // ||
+uint8_t Left2RightSwip_enable = 0;       // -->
+uint8_t Right2LeftSwip_enable = 0;       // <--
+uint8_t Up2DownSwip_enable = 0;          // |v
+uint8_t Down2UpSwip_enable = 0;          // |^
+uint8_t Mgestrue_enable = 0;             // M
+uint8_t Wgestrue_enable = 0;             // W
+uint8_t SingleTap_enable = 0;			 // single tap
+
+uint8_t Proximity_state = 0;             // Proximity Sensor State
 /*******Part2:declear Area********************************/
 static void speedup_resume(struct work_struct *work);
 static void lcd_trigger_load_tp_fw(struct work_struct *work);
-static void lcd_tp_refresh_work(struct work_struct *work);
-
 void esd_handle_switch(struct esd_information *esd_info, bool flag);
 
 #ifdef TPD_USE_EINT
 static irqreturn_t tp_irq_thread_fn(int irq, void *dev_id);
 #endif
 
-#if defined(CONFIG_FB) || defined(CONFIG_DRM_MSM)
+#if defined(CONFIG_FB) || defined(CONFIG_DRM)
 static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data);
 #endif
 
@@ -240,10 +254,6 @@ void operate_mode_switch(struct touchpanel_data *ts)
             ts->ts_ops->smooth_lv_set(ts->chip_data, ts->smooth_level);
         }
 
-        if (ts->lcd_tp_refresh_support && ts->ts_ops->tp_refresh_switch) {
-            ts->ts_ops->tp_refresh_switch(ts->chip_data, ts->lcd_fps);
-        }
-
         ts->ts_ops->mode_switch(ts->chip_data, MODE_NORMAL, true);
     }
 }
@@ -251,7 +261,6 @@ void operate_mode_switch(struct touchpanel_data *ts)
 static void tp_touch_down(struct touchpanel_data *ts, struct point_info points, int touch_report_num, int id)
 {
     static int last_width_major;
-    static int point_num = 0;
 
     if (ts->input_dev == NULL)
         return;
@@ -301,8 +310,6 @@ static void tp_touch_down(struct touchpanel_data *ts, struct point_info points, 
 
     input_report_abs(ts->input_dev, ABS_MT_POSITION_X, points.x);
     input_report_abs(ts->input_dev, ABS_MT_POSITION_Y, points.y);
-
-    TPD_SPECIFIC_PRINT(point_num, "Touchpanel id %d :Down[%4d %4d %4d]\n", id, points.x, points.y, points.z);
 
 #ifndef TYPE_B_PROTOCOL
     input_mt_sync(ts->input_dev);
@@ -412,6 +419,8 @@ static void tp_geture_info_transform(struct gesture_info *gesture, struct resolu
 static void tp_gesture_handle(struct touchpanel_data *ts)
 {
     struct gesture_info gesture_info_temp;
+    bool enabled = false;
+    int key = -1;
 
     if (!ts->ts_ops->get_gesture_info) {
         TPD_INFO("not support ts->ts_ops->get_gesture_info callback\n");
@@ -422,22 +431,65 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
     ts->ts_ops->get_gesture_info(ts->chip_data, &gesture_info_temp);
     tp_geture_info_transform(&gesture_info_temp, &ts->resolution_info);
 
-    TPD_INFO("detect %s gesture\n", gesture_info_temp.gesture_type == DouTap ? "double tap" :
-             gesture_info_temp.gesture_type == UpVee ? "up vee" :
-             gesture_info_temp.gesture_type == DownVee ? "down vee" :
-             gesture_info_temp.gesture_type == LeftVee ? "(>)" :
-             gesture_info_temp.gesture_type == RightVee ? "(<)" :
-             gesture_info_temp.gesture_type == Circle ? "circle" :
-             gesture_info_temp.gesture_type == DouSwip ? "(||)" :
-             gesture_info_temp.gesture_type == Left2RightSwip ? "(-->)" :
-             gesture_info_temp.gesture_type == Right2LeftSwip ? "(<--)" :
-             gesture_info_temp.gesture_type == Up2DownSwip ? "up to down |" :
-             gesture_info_temp.gesture_type == Down2UpSwip ? "down to up |" :
-             gesture_info_temp.gesture_type == Mgestrue ? "(M)" :
-             gesture_info_temp.gesture_type == Wgestrue ? "(W)" :
-             gesture_info_temp.gesture_type == FingerprintDown ? "(fingerprintdown)" :
-             gesture_info_temp.gesture_type == FingerprintUp ? "(fingerprintup)" :
-             gesture_info_temp.gesture_type == SingleTap ? "single tap" : "unknown");
+    switch (gesture_info_temp.gesture_type) {
+        case DouTap:
+            enabled = DouTap_enable;
+            key = KEY_DOUBLE_TAP;
+            break;
+        case UpVee:
+            enabled = UpVee_enable;
+            key = KEY_GESTURE_DOWN_ARROW;
+            break;
+        case DownVee:
+            enabled = DownVee_enable;
+            key = KEY_GESTURE_UP_ARROW;
+            break;
+        case LeftVee:
+            enabled = LeftVee_enable;
+            key = KEY_GESTURE_RIGHT_ARROW;
+            break;
+        case RightVee:
+            enabled = RightVee_enable;
+            key = KEY_GESTURE_LEFT_ARROW;
+            break;
+        case Circle:
+            enabled = Circle_enable;
+            key = KEY_GESTURE_CIRCLE;
+            break;
+        case DouSwip:
+            enabled = DouSwip_enable ;
+            key = KEY_GESTURE_TWO_SWIPE;
+            break;
+        case Left2RightSwip:
+            enabled = Left2RightSwip_enable ;
+            key = KEY_GESTURE_SWIPE_RIGHT;
+            break;
+        case Right2LeftSwip:
+            enabled = Right2LeftSwip_enable ;
+            key = KEY_GESTURE_SWIPE_LEFT;
+            break;
+        case Up2DownSwip:
+            enabled = Up2DownSwip_enable;
+            key = KEY_GESTURE_SWIPE_DOWN;
+            break;
+        case Down2UpSwip:
+            enabled = Down2UpSwip;
+            key = KEY_GESTURE_SWIPE_UP;
+            break;
+        case Mgestrue:
+            enabled = Mgestrue_enable;
+            key = KEY_GESTURE_M;
+            break;
+        case Wgestrue:
+            enabled = Wgestrue_enable;
+            key = KEY_GESTURE_W;
+            break;
+        case SingleTap:
+            enabled = SingleTap_enable;
+            key = KEY_GESTURE_SINGLE_TAP;
+            break;
+    }
+
 #if GESTURE_COORD_GET
     if (ts->ts_ops->get_gesture_coord) {
         ts->ts_ops->get_gesture_coord(ts->chip_data, gesture_info_temp.gesture_type);
@@ -460,10 +512,12 @@ static void tp_gesture_handle(struct touchpanel_data *ts)
         if(ts->geature_ignore)
             return;
 #endif
-        input_report_key(ts->input_dev, KEY_F4, 1);
-        input_sync(ts->input_dev);
-        input_report_key(ts->input_dev, KEY_F4, 0);
-        input_sync(ts->input_dev);
+	if (enabled) {
+            input_report_key(ts->input_dev, key, 1);
+            input_sync(ts->input_dev);
+            input_report_key(ts->input_dev, key, 0);
+            input_sync(ts->input_dev);
+        }
     } else if (gesture_info_temp.gesture_type == FingerprintDown) {
         ts->fp_info.touch_state = 1;
         if (ts->screenoff_fingerprint_info_support) {
@@ -521,7 +575,6 @@ static void tp_touch_release(struct touchpanel_data *ts)
     input_mt_sync(ts->input_dev);
     input_sync(ts->input_dev);
 #endif
-    TPD_INFO("release all touch point and key, clear tp touch down flag\n");
     ts->view_area_touched = 0; //realse all touch point,must clear this flag
     ts->touch_count = 0;
     ts->irq_slot = 0;
@@ -1030,11 +1083,9 @@ static void tp_fingerprint_handle(struct touchpanel_data *ts)
     ts->fp_info.x = fp_tpinfo.x;
     ts->fp_info.y = fp_tpinfo.y;
     if(fp_tpinfo.touch_state == FINGERPRINT_DOWN_DETECT) {
-        TPD_INFO("screen on down : (%d, %d)\n", ts->fp_info.x, ts->fp_info.y);
         ts->fp_info.touch_state = 1;
         opticalfp_irq_handler(&ts->fp_info);
     } else if(fp_tpinfo.touch_state == FINGERPRINT_UP_DETECT) {
-        TPD_INFO("screen on up : (%d, %d)\n", ts->fp_info.x, ts->fp_info.y);
         ts->fp_info.touch_state = 0;
         opticalfp_irq_handler(&ts->fp_info);
     } else if (ts->fp_info.touch_state) {
@@ -1059,7 +1110,6 @@ static void tp_async_work_callback(void)
         return;
     }
 
-    TPD_INFO("%s: async work\n", __func__);
     if (ts->use_resume_notify && ts->suspend_state == TP_RESUME_COMPLETE) {
         complete(&ts->resume_complete);
         return;
@@ -1129,7 +1179,7 @@ static void tp_work_func(struct touchpanel_data *ts)
         if (CHK_BIT(cur_event, IRQ_FINGERPRINT) && ts->fp_enable) {
             tp_fingerprint_handle(ts);
         }
-    } else if (CHK_BIT(cur_event, IRQ_GESTURE)) {
+    } else if (!Proximity_state && CHK_BIT(cur_event, IRQ_GESTURE)) {
         tp_gesture_handle(ts);
     } else if (CHK_BIT(cur_event, IRQ_EXCEPTION)) {
         tp_exception_handle(ts);
@@ -1374,7 +1424,6 @@ static void tp_freq_hop_work(struct work_struct *work)
     struct touchpanel_data *ts = container_of(work, struct touchpanel_data,
                                  freq_hop_info.freq_hop_work.work);
 
-    TPD_INFO("syna_tcm_freq_hop_work\n");
     if (!ts->is_suspended) {
         TPD_INFO("trigger frequency hopping~~~~\n");
 
@@ -1414,8 +1463,6 @@ int tp_gesture_enable_flag(void)
     if (!g_tp || !g_tp->is_incell_panel)
         return LCD_POWER_OFF;
 
-    TPD_INFO("g_tp->gesture_enable is %d\n", g_tp->gesture_enable);
-
     return (g_tp->gesture_enable > 0) ? LCD_POWER_ON : LCD_POWER_OFF;
 }
 
@@ -1454,11 +1501,9 @@ int check_touchirq_triggered(void)
 
     value = gpio_get_value(g_tp->hw_res.irq_gpio);
     if ((0 == value) && (g_tp->irq_flags & IRQF_TRIGGER_LOW)) {
-        TPD_INFO("touch irq is triggered.\n");
         return 1; //means irq is triggered
     }
     if ((1 == value) && (g_tp->irq_flags & IRQF_TRIGGER_HIGH)) {
-        TPD_INFO("touch irq is triggered.\n");
         return 1; //means irq is triggered
     }
 
@@ -1476,11 +1521,9 @@ void switch_headset_state(int headset_state)
     if (!g_tp) {
         return;
     }
-    TPD_INFO("%s: ENTER\n", __func__);
 
     if (g_tp->headset_pump_support && (g_tp->is_headset_checked != headset_state)) {
         g_tp->is_headset_checked = !!headset_state;
-        TPD_INFO("%s: check headset state : %d, is_suspended: %d\n", __func__, headset_state, g_tp->is_suspended);
         if (!g_tp->is_suspended && (g_tp->suspend_state == TP_SPEEDUP_RESUME_COMPLETE)
             && !g_tp->loading_fw) {
             mutex_lock(&g_tp->mutex);
@@ -1488,71 +1531,8 @@ void switch_headset_state(int headset_state)
             mutex_unlock(&g_tp->mutex);
         }
     }
-    TPD_INFO("%s: END\n", __func__);
 }
 EXPORT_SYMBOL(switch_headset_state);
-
-/*
- *    gesture_enable = 0 : disable gesture
- *    gesture_enable = 1 : enable gesture when ps is far away
- *    gesture_enable = 2 : disable gesture when ps is near
- *    gesture_enable = 3 : enable single tap gesture when ps is far away
- */
-static ssize_t proc_gesture_control_write(struct file *file, const char __user *buffer, size_t count, loff_t *ppos)
-{
-    int value = 0;
-    char buf[4] = {0};
-    struct touchpanel_data *ts = PDE_DATA(file_inode(file));
-
-    if (count > 2)
-        return count;
-    if (!ts)
-        return count;
-
-    if (copy_from_user(buf, buffer, count)) {
-        TPD_INFO("%s: read proc input error.\n", __func__);
-        return count;
-    }
-    sscanf(buf, "%d", &value);
-    if (value > 3 || (ts->gesture_test_support && ts->gesture_test.flag))
-        return count;
-
-    mutex_lock(&ts->mutex);
-    if (ts->gesture_enable != value) {
-        ts->gesture_enable = value;
-        TPD_INFO("%s: gesture_enable = %d, is_suspended = %d\n", __func__, ts->gesture_enable, ts->is_suspended);
-        if (ts->is_incell_panel && (ts->suspend_state == TP_RESUME_EARLY_EVENT || ts->disable_gesture_ctrl) && (ts->tp_resume_order == LCD_TP_RESUME)) {
-            TPD_INFO("tp will resume, no need mode_switch in incell panel\n"); /*avoid i2c error or tp rst pulled down in lcd resume*/
-        } else if (ts->is_suspended) {
-            if (ts->fingerprint_underscreen_support && ts->fp_enable && ts->ts_ops->enable_gesture_mask) {
-                ts->ts_ops->enable_gesture_mask(ts->chip_data, (ts->gesture_enable & 0x01) == 1);
-            } else {
-                operate_mode_switch(ts);
-            }
-        }
-    } else {
-        TPD_INFO("%s: do not do same operator :%d\n", __func__, value);
-    }
-    mutex_unlock(&ts->mutex);
-
-    return count;
-}
-
-static ssize_t proc_gesture_control_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
-{
-    int ret = 0;
-    char page[PAGESIZE] = {0};
-    struct touchpanel_data *ts = PDE_DATA(file_inode(file));
-
-    if (!ts)
-        return 0;
-
-    TPD_DEBUG("double tap enable is: %d\n", ts->gesture_enable);
-    ret = snprintf(page, PAGESIZE - 1, "%d\n", ts->gesture_enable);
-    ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
-
-    return ret;
-}
 
 static ssize_t proc_coordinate_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
@@ -1563,7 +1543,6 @@ static ssize_t proc_coordinate_read(struct file *file, char __user *user_buf, si
     if (!ts)
         return 0;
 
-    TPD_DEBUG("%s:gesture_type = %u\n", __func__, ts->gesture.gesture_type);
     ret = snprintf(page, PAGESIZE - 1, "%u,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%d:%d,%u\n", ts->gesture.gesture_type,
                    ts->gesture.Point_start.x, ts->gesture.Point_start.y, ts->gesture.Point_end.x, ts->gesture.Point_end.y,
                    ts->gesture.Point_1st.x,   ts->gesture.Point_1st.y,   ts->gesture.Point_2nd.x, ts->gesture.Point_2nd.y,
@@ -1573,13 +1552,6 @@ static ssize_t proc_coordinate_read(struct file *file, char __user *user_buf, si
 
     return ret;
 }
-
-static const struct file_operations proc_gesture_control_fops = {
-    .write = proc_gesture_control_write,
-    .read  = proc_gesture_control_read,
-    .open  = simple_open,
-    .owner = THIS_MODULE,
-};
 
 static const struct file_operations proc_coordinate_fops = {
     .read  = proc_coordinate_read,
@@ -1652,7 +1624,6 @@ static ssize_t proc_game_switch_write(struct file *file, const char __user *buff
     struct touchpanel_data *ts = PDE_DATA(file_inode(file));
 
     if (count > 4) {
-        TPD_INFO("%s:count > 4\n", __func__);
         return count;
     }
 
@@ -1672,7 +1643,6 @@ static ssize_t proc_game_switch_write(struct file *file, const char __user *buff
     sscanf(buf, "%x", (uint32_t *)&value);
     ts->noise_level = value;
 
-    TPD_INFO("%s: game_switch value=0x%x\n", __func__, value);
     if (!ts->is_suspended) {
         mutex_lock(&ts->mutex);
         ts->ts_ops->mode_switch(ts->chip_data, MODE_GAME, value > 0);
@@ -1681,8 +1651,6 @@ static ssize_t proc_game_switch_write(struct file *file, const char __user *buff
 #endif
 
         mutex_unlock(&ts->mutex);
-    } else {
-        TPD_INFO("%s: game_switch_support is_suspended.\n", __func__);
     }
 
     return count;
@@ -1717,8 +1685,6 @@ static ssize_t proc_black_screen_test_read(struct file *file, char __user *user_
     int retry = 20;
     int msg_size = 256;
     struct touchpanel_data *ts = PDE_DATA(file_inode(file));
-
-    TPD_INFO("%s %ld %lld\n", __func__, count, *ppos);
 
     if (!ts || !ts->gesture_test.flag)
         return 0;
@@ -1780,7 +1746,6 @@ static ssize_t proc_black_screen_test_write(struct file *file, const char __user
         return count;
     }
     sscanf(buf, "%d", &value);
-    TPD_INFO("%s %d\n", __func__, value);
 
     ts->gesture_test.gesture_backup = ts->gesture_enable;
     ts->gesture_enable = true;
@@ -1829,7 +1794,6 @@ static ssize_t proc_irq_status_write(struct file *file, const char __user *user_
         return count;
     }
     sscanf(buf, "%d", &value);
-    TPD_INFO("%s %d, %s ts->irq=%d\n", __func__, value, value ? "enable" : "disable", ts->irq);
 
     if (value == 1) {
         enable_irq(ts->irq);
@@ -1866,7 +1830,6 @@ static ssize_t proc_glove_control_write(struct file *file, const char __user *bu
         return count;
     }
     sscanf(buf, "%d", &ret);
-    TPD_INFO("%s:buf = %d, ret = %d\n", __func__, *buf, ret);
     if ((ret == 0) || (ret == 1)) {
         mutex_lock(&ts->mutex);
         ts->glove_enable = ret;
@@ -1878,13 +1841,9 @@ static ssize_t proc_glove_control_write(struct file *file, const char __user *bu
     }
     switch(ret) {
     case 0:
-        TPD_DEBUG("tp_glove_func will be disable\n");
         break;
     case 1:
-        TPD_DEBUG("tp_glove_func will be enable\n");
         break;
-    default:
-        TPD_DEBUG("Please enter 0 or 1 to open or close the glove function\n");
     }
 
     return count;
@@ -1899,7 +1858,6 @@ static ssize_t proc_glove_control_read(struct file *file, char __user *user_buf,
     if (!ts)
         return 0;
 
-    TPD_INFO("glove mode enable is: %d\n", ts->glove_enable);
     ret = snprintf(page, PAGESIZE - 1, "%d\n", ts->glove_enable);
     ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
 
@@ -1951,7 +1909,6 @@ static ssize_t proc_debug_control_read(struct file *file, char __user *buf, size
     uint8_t ret = 0;
     char page[PAGESIZE] = {0};
 
-    TPD_INFO("%s: tp_debug = %d.\n", __func__, tp_debug);
     snprintf(page, PAGESIZE - 1, "%u", tp_debug);
     ret = simple_read_from_buffer(buf, count, ppos, page, strlen(page));
 
@@ -2012,7 +1969,6 @@ static ssize_t proc_limit_area_read(struct file *file, char __user *user_buf, si
 
     if (!ts)
         return 0;
-    TPD_DEBUG("limit_area is: %d\n", ts->edge_limit.limit_area);
     ret = snprintf(page, PAGESIZE - 1, "limit_area = %d left_x1 = %d right_x1 = %d left_x2 = %d right_x2 = %d left_x3 = %d right_x3 = %d left_y1 = %d right_y1 = %d left_y2 = %d right_y2 = %d left_y3 = %d right_y3 = %d\n",
                    ts->edge_limit.limit_area, ts->edge_limit.left_x1, ts->edge_limit.right_x1, ts->edge_limit.left_x2, ts->edge_limit.right_x2, ts->edge_limit.left_x3, ts->edge_limit.right_x3,
                    ts->edge_limit.left_y1, ts->edge_limit.right_y1, ts->edge_limit.left_y2, ts->edge_limit.right_y2, ts->edge_limit.left_y3, ts->edge_limit.right_y3);
@@ -2083,7 +2039,6 @@ static ssize_t proc_limit_control_read(struct file *file, char __user *user_buf,
     if (!ts)
         return 0;
 
-    TPD_INFO("limit_enable is: 0x%x, ts->limit_edge = 0x%x, ts->limit_corner = 0x%x\n", ts->limit_enable, ts->limit_edge, ts->limit_corner);
     ret = snprintf(page, PAGESIZE - 1, "%d\n", ts->limit_enable);
 
     ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page));
@@ -2109,7 +2064,6 @@ static ssize_t proc_limit_control_write(struct file *file, const char __user *bu
 
     sscanf(buf, "%x", (uint32_t *)&temp);
     if (temp > 0x1F) {
-        TPD_INFO("%s: temp = 0x%x > 0x1F \n", __func__, temp);
         return count;
     }
 
@@ -2126,7 +2080,6 @@ static ssize_t proc_limit_control_write(struct file *file, const char __user *bu
     if (!ts->default_hor_area) {
         ts->limit_corner = ts->limit_enable >> 1;
     }
-    TPD_INFO("%s: limit_enable = 0x%x, ts->limit_edge = 0x%x, ts->limit_corner=0x%x\n", __func__, ts->limit_enable, ts->limit_edge, ts->limit_corner);
 
     if (ts->is_suspended == 0) {
         ret = ts->ts_ops->mode_switch(ts->chip_data, MODE_EDGE, ts->limit_edge);
@@ -2185,7 +2138,6 @@ static ssize_t proc_dir_control_write(struct file *file, const char __user *buff
         return count;
     }
 
-    TPD_INFO("%s: value = %d\n", __func__, temp);
     if (ts->ts_ops->set_touch_direction) {
         ts->ts_ops->set_touch_direction(ts->chip_data, temp);
     }
@@ -2209,18 +2161,12 @@ static ssize_t proc_dir_control_write(struct file *file, const char __user *buff
         ts->edge_limit.left_x3    = 5 * ts->edge_limit.left_x1;
         ts->edge_limit.right_x3   = ts->resolution_info.LCD_WIDTH - (5 * ts->edge_limit.left_x1);
 
-        TPD_INFO("limit_area = %d; left_x1 = %d; right_x1 = %d; left_x2 = %d; right_x2 = %d; left_x3 = %d; right_x3 = %d\n",
-                 ts->edge_limit.limit_area, ts->edge_limit.left_x1, ts->edge_limit.right_x1, ts->edge_limit.left_x2, ts->edge_limit.right_x2, ts->edge_limit.left_x3, ts->edge_limit.right_x3);
-
         ts->edge_limit.left_y1    = (ts->edge_limit.limit_area * 1000) / 100;
         ts->edge_limit.right_y1   = ts->resolution_info.LCD_HEIGHT - ts->edge_limit.left_y1;
         ts->edge_limit.left_y2    = 2 * ts->edge_limit.left_y1;
         ts->edge_limit.right_y2   = ts->resolution_info.LCD_HEIGHT - (2 * ts->edge_limit.left_y1);
         ts->edge_limit.left_y3    = 5 * ts->edge_limit.left_y1;
         ts->edge_limit.right_y3   = ts->resolution_info.LCD_HEIGHT - (5 * ts->edge_limit.left_y1);
-
-        TPD_INFO("limit_area = %d; left_y1 = %d; right_y1 = %d; left_y2 = %d; right_y2 = %d; left_y3 = %d; right_y3 = %d\n",
-                 ts->edge_limit.limit_area, ts->edge_limit.left_y1, ts->edge_limit.right_y1, ts->edge_limit.left_y2, ts->edge_limit.right_y2, ts->edge_limit.left_y3, ts->edge_limit.right_y3);
     }
 
     mutex_unlock(&ts->mutex);
@@ -3538,6 +3484,58 @@ static const struct file_operations proc_touch_apk_fops = {
  * we need to set touchpanel_data struct as private_data to those file_inode
  * Returning zero(success) or negative errno(failed)
  */
+
+#define GESTURE_ATTR(name, out) \
+	static ssize_t name##_enable_read_func(struct file *file, char __user *user_buf, size_t count, loff_t *ppos) \
+	{ \
+		int ret = 0; \
+		char page[PAGESIZE]; \
+		ret = sprintf(page, "%d\n", out); \
+		ret = simple_read_from_buffer(user_buf, count, ppos, page, strlen(page)); \
+		return ret; \
+	} \
+	static ssize_t name##_enable_write_func(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos) \
+	{ \
+		int enabled = 0; \
+		char page[PAGESIZE] = {0}; \
+		copy_from_user(page, user_buf, count); \
+		sscanf(page, "%d", &enabled); \
+		out = enabled > 0 ? 1 : 0; \
+		return count; \
+	} \
+	static const struct file_operations name##_enable_proc_fops = { \
+	    .write = name##_enable_write_func, \
+	    .read =  name##_enable_read_func, \
+	    .open = simple_open, \
+	    .owner = THIS_MODULE, \
+	};
+
+GESTURE_ATTR(double_tap, DouTap_enable);
+GESTURE_ATTR(up_arrow, UpVee_enable);
+GESTURE_ATTR(down_arrow, DownVee_enable);
+GESTURE_ATTR(left_arrow, LeftVee_enable);
+GESTURE_ATTR(right_arrow, RightVee_enable);
+GESTURE_ATTR(double_swipe, DouSwip_enable);
+GESTURE_ATTR(up_swipe, Up2DownSwip_enable);
+GESTURE_ATTR(down_swipe, Down2UpSwip_enable);
+GESTURE_ATTR(left_swipe, Left2RightSwip_enable);
+GESTURE_ATTR(right_swipe, Right2LeftSwip_enable);
+GESTURE_ATTR(letter_o, Circle_enable);
+GESTURE_ATTR(letter_w, Wgestrue_enable);
+GESTURE_ATTR(letter_m, Mgestrue_enable);
+GESTURE_ATTR(single_tap, SingleTap_enable);
+GESTURE_ATTR(proximity_state, Proximity_state);
+
+#define CREATE_PROC_NODE(PARENT, NAME, MODE) \
+	prEntry_tmp = proc_create(#NAME, MODE, PARENT, &NAME##_proc_fops); \
+	if (prEntry_tmp == NULL) { \
+		ret = -ENOMEM; \
+		TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__); \
+	}
+
+#define CREATE_GESTURE_NODE(NAME) \
+	CREATE_PROC_NODE(prEntry_tp, NAME##_enable, 0666)
+
 static int init_touchpanel_proc(struct touchpanel_data *ts)
 {
     int ret = 0;
@@ -3610,11 +3608,21 @@ static int init_touchpanel_proc(struct touchpanel_data *ts)
 
     //proc files-step2-4:/proc/touchpanel/double_tap_enable (black gesture related interface)
     if (ts->black_gesture_support) {
-        prEntry_tmp = proc_create_data("double_tap_enable", 0666, prEntry_tp, &proc_gesture_control_fops, ts);
-        if (prEntry_tmp == NULL) {
-            ret = -ENOMEM;
-            TPD_INFO("%s: Couldn't create proc entry, %d\n", __func__, __LINE__);
-        }
+        CREATE_GESTURE_NODE(double_tap);
+        CREATE_GESTURE_NODE(up_arrow);
+        CREATE_GESTURE_NODE(down_arrow);
+        CREATE_GESTURE_NODE(left_arrow);
+        CREATE_GESTURE_NODE(right_arrow);
+        CREATE_GESTURE_NODE(double_swipe);
+        CREATE_GESTURE_NODE(up_swipe);
+        CREATE_GESTURE_NODE(down_swipe);
+        CREATE_GESTURE_NODE(left_swipe);
+        CREATE_GESTURE_NODE(right_swipe);
+        CREATE_GESTURE_NODE(letter_o);
+        CREATE_GESTURE_NODE(letter_w);
+        CREATE_GESTURE_NODE(letter_m);
+        CREATE_GESTURE_NODE(single_tap);
+	CREATE_GESTURE_NODE(proximity_state);
         prEntry_tmp = proc_create_data("coordinate", 0444, prEntry_tp, &proc_coordinate_fops, ts);
         if (prEntry_tmp == NULL) {
             ret = -ENOMEM;
@@ -5061,7 +5069,20 @@ static int init_input_device(struct touchpanel_data *ts)
     set_bit(INPUT_PROP_DIRECT, ts->input_dev->propbit);
     set_bit(BTN_TOUCH, ts->input_dev->keybit);
     if (ts->black_gesture_support) {
-        set_bit(KEY_F4, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_W, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_M, ts->input_dev->keybit);
+        set_bit(KEY_DOUBLE_TAP, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_CIRCLE, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_TWO_SWIPE, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_UP_ARROW, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_LEFT_ARROW, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_RIGHT_ARROW, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_DOWN_ARROW, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_SWIPE_LEFT, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_SWIPE_DOWN, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_SWIPE_RIGHT, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_SWIPE_UP, ts->input_dev->keybit);
+        set_bit(KEY_GESTURE_SINGLE_TAP, ts->input_dev->keybit);
 #ifdef CONFIG_OPPO_TP_APK
         set_bit(KEY_POWER, ts->input_dev->keybit);
 #endif //end of CONFIG_OPPO_TP_APK
@@ -5747,7 +5768,6 @@ void esd_handle_switch(struct esd_information *esd_info, bool on)
         if (!esd_info->esd_running_flag) {
             esd_info->esd_running_flag = 1;
 
-            TPD_INFO("Esd protector started, cycle: %d s\n", esd_info->esd_work_time / HZ);
             queue_delayed_work(esd_info->esd_workqueue, &esd_info->esd_check_work, esd_info->esd_work_time);
         }
     } else {
@@ -5883,15 +5903,6 @@ int register_common_touch_device(struct touchpanel_data *pdata)
         invoke = (struct invoke_method *)pdata->chip_data;
         invoke->invoke_common = tp_work_common_callback;
         invoke->async_work = tp_async_work_callback;
-    }
-
-    // lcd_tp_refresh_support support
-    if (ts->lcd_tp_refresh_support) {
-        ts->tp_refresh_wq = create_singlethread_workqueue("tp_refresh_wq");
-        if (!ts->tp_refresh_wq) {
-            return -1;
-        }
-        INIT_WORK(&ts->tp_refresh_work, lcd_tp_refresh_work);
     }
     //step4 : Power init && setting
     preconfig_power_control(ts);
@@ -6039,7 +6050,7 @@ int register_common_touch_device(struct touchpanel_data *pdata)
     }
 
     //step14 : suspend && resume fuction register
-#if defined(CONFIG_DRM_MSM)
+#if defined(CONFIG_DRM)
     ts->fb_notif.notifier_call = fb_notifier_callback;
     ret = msm_drm_register_client(&ts->fb_notif);
     if (ret) {
@@ -6177,7 +6188,7 @@ int register_common_touch_device(struct touchpanel_data *pdata)
     ts->loading_fw = false;
     ts->is_suspended = 0;
     ts->suspend_state = TP_SPEEDUP_RESUME_COMPLETE;
-    ts->gesture_enable = 0;
+    ts->gesture_enable = 1;
     ts->es_enable = 0;
     ts->fd_enable = 0;
     ts->fp_enable = 0;
@@ -6278,10 +6289,6 @@ static int tp_suspend(struct device *dev)
     int ret;
     struct touchpanel_data *ts = dev_get_drvdata(dev);
 
-    TPD_INFO("%s: start.\n", __func__);
-
-    TPD_INFO("tp_suspend ts->spuri_fp_touch.fp_trigger =%d  ts->i2c_ready =%d  ts->spuri_fp_touch.lcd_resume_ok=%d \n",
-             ts->spuri_fp_touch.fp_trigger, ts->i2c_ready, ts->spuri_fp_touch.lcd_resume_ok);
     ts->spuri_fp_touch.lcd_resume_ok = false;
     //step1:detect whether we need to do suspend
     if (ts->input_dev == NULL) {
@@ -6310,7 +6317,6 @@ static int tp_suspend(struct device *dev)
         ts->is_suspended = 1;
         ts->suspend_state = TP_SUSPEND_COMPLETE;
     } else {
-        TPD_INFO("%s: do not suspend twice.\n", __func__);
         goto EXIT;
     }
 
@@ -6388,7 +6394,6 @@ static int tp_suspend(struct device *dev)
     }
 
 EXIT:
-    TPD_INFO("%s: end.\n", __func__);
     mutex_unlock(&ts->mutex);
 
 NO_NEED_SUSPEND:
@@ -6408,10 +6413,7 @@ static void tp_resume(struct device *dev)
 {
     struct touchpanel_data *ts = dev_get_drvdata(dev);
 
-    TPD_INFO("%s start.\n", __func__);
-
     if (!ts->is_suspended) {
-        TPD_INFO("%s: do not resume twice.\n", __func__);
         goto NO_NEED_RESUME;
     }
     ts->monitor_data.monitor_down = 0;
@@ -6468,7 +6470,6 @@ void lcd_trigger_tp_irq_reset(void)
     if (!g_tp)
         return;
     if (g_tp->irq_trigger_hdl_support) {
-        TPD_INFO("%s\n", __func__);
         free_irq(g_tp->irq, g_tp);
         tp_register_irq_func(g_tp);
     }
@@ -6480,7 +6481,6 @@ void lcd_queue_load_tp_fw(void)
     if (!g_tp)
         return;
     if (g_tp->lcd_trigger_load_tp_fw_support) {
-        TPD_INFO("%s\n", __func__);
         g_tp->disable_gesture_ctrl = true;
         if (g_tp->ts_ops) {
             if (g_tp->ts_ops->tp_queue_work_prepare) {
@@ -6503,7 +6503,6 @@ static void lcd_trigger_load_tp_fw(struct work_struct *work)
         if (is_running) {
             TPD_INFO("%s is running, can not repeat\n", __func__);
         } else {
-            TPD_INFO("%s start\n", __func__);
             is_running = true;
             mutex_lock(&ts->mutex);
             ts->ts_ops->reset(ts->chip_data);
@@ -6519,7 +6518,6 @@ void lcd_wait_tp_resume_finished(void)
     if (!g_tp)
         return;
     if (g_tp->lcd_wait_tp_resume_finished_support) {
-        TPD_INFO("%s\n", __func__);
 
         do {
             if(retry_cnt) {
@@ -6532,45 +6530,22 @@ void lcd_wait_tp_resume_finished(void)
 }
 EXPORT_SYMBOL(lcd_wait_tp_resume_finished);
 
-static void lcd_tp_refresh_work(struct work_struct *work)
-{
-    struct touchpanel_data *ts = container_of(work, struct touchpanel_data,
-                                 tp_refresh_work);
-
-    if (ts->int_mode == BANNABLE) {
-        mutex_lock(&ts->mutex);
-    }
-    ts->ts_ops->tp_refresh_switch(ts->chip_data,
-            ts->lcd_fps);
-
-    if (ts->int_mode == BANNABLE) {
-        mutex_unlock(&ts->mutex);
-    }
-}
-
 void lcd_tp_refresh_switch(int fps)
 {
+
     if (!g_tp)
         return;
-
-#ifdef CONFIG_TOUCHPANEL_MTK_PLATFORM
-    if ((g_tp->boot_mode == META_BOOT) || (g_tp->boot_mode == FACTORY_BOOT)) {
-#else
-    if ((g_tp->boot_mode == MSM_BOOT_MODE__FACTORY) || (g_tp->boot_mode == MSM_BOOT_MODE__RF) || (g_tp->boot_mode == MSM_BOOT_MODE__WLAN)) {
-#endif
-        TPD_INFO("%s: in ftm mode, no need to call back\n", __func__);
-        return;
-    }
-
     if (g_tp->lcd_tp_refresh_support) {
-        TPD_INFO("%s:fps:%d\n", __func__, fps);
-        g_tp->lcd_fps = fps;
         if (g_tp->ts_ops) {
-            if (g_tp->ts_ops->tp_refresh_switch && !g_tp->is_suspended) {
-                queue_work(g_tp->tp_refresh_wq, &g_tp->tp_refresh_work);
+            if (g_tp->ts_ops->tp_refresh_switch) {
+                mutex_lock(&g_tp->mutex);
+                g_tp->ts_ops->tp_refresh_switch(g_tp->chip_data,
+                        fps, g_tp->is_suspended);
+                mutex_unlock(&g_tp->mutex);
             }
         }
     }
+
 }
 EXPORT_SYMBOL(lcd_tp_refresh_switch);
 
@@ -6586,8 +6561,6 @@ static void speedup_resume(struct work_struct *work)
     int timed_out = 0;
     struct touchpanel_data *ts = container_of(work, struct touchpanel_data,
                                  speed_up_work);
-
-    TPD_INFO("%s is called\n", __func__);
 
     //step1: get mutex for locking i2c acess flow
     mutex_lock(&ts->mutex);
@@ -6619,7 +6592,6 @@ static void speedup_resume(struct work_struct *work)
     if (ts->use_resume_notify && (!ts->fp_info.touch_state || !ts->report_flow_unlock_support)) {
         timed_out = wait_for_completion_timeout(&ts->resume_complete, 1 * HZ); //wait resume over for 1s
         if ((0 == timed_out) || (ts->resume_complete.done)) {
-            TPD_INFO("resume state, timed_out:%d, done:%d\n", timed_out, ts->resume_complete.done);
             if (!timed_out && ts->ts_ops->resume_timedout_operate) {
                 ts->ts_ops->resume_timedout_operate(ts->chip_data);
                 ts->suspend_state = TP_SPEEDUP_RESUME_COMPLETE;
@@ -6662,12 +6634,11 @@ static void speedup_resume(struct work_struct *work)
         ts->resume_finished = 1;
     }
     //step7:Unlock  && exit
-    TPD_INFO("%s: end!\n", __func__);
     mutex_unlock(&ts->mutex);
     complete(&ts->pm_complete);
 }
 
-#if defined(CONFIG_FB) || defined(CONFIG_DRM_MSM)
+#if defined(CONFIG_FB) || defined(CONFIG_DRM)
 static int fb_notifier_callback(struct notifier_block *self, unsigned long event, void *data)
 {
     int *blank;
@@ -6676,7 +6647,7 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
     struct touchpanel_data *ts = container_of(self, struct touchpanel_data, fb_notif);
 
     //to aviod some kernel bug (at fbmem.c some local veriable are not initialized)
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
     if(event != MSM_DRM_EARLY_EVENT_BLANK && event != MSM_DRM_EVENT_BLANK)
 #else
     if(event != FB_EARLY_EVENT_BLANK && event != FB_EVENT_BLANK)
@@ -6685,8 +6656,7 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
 
     if (evdata && evdata->data && ts && ts->chip_data) {
         blank = evdata->data;
-        TPD_INFO("%s: event = %ld, blank = %d\n", __func__, event, *blank);
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
         if (*blank == MSM_DRM_BLANK_POWERDOWN) { //suspend
             if (event == MSM_DRM_EARLY_EVENT_BLANK) {    //early event
 #else
@@ -6694,9 +6664,6 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
             if (event == FB_EARLY_EVENT_BLANK) {    //early event
 #endif
                 timed_out = wait_for_completion_timeout(&ts->pm_complete, 0.5 * HZ); //wait resume over for 0.5s
-                if ((0 == timed_out) || (ts->pm_complete.done)) {
-                    TPD_INFO("completion state, timed_out:%d, done:%d\n", timed_out, ts->pm_complete.done);
-                }
 
                 ts->suspend_state = TP_SUSPEND_EARLY_EVENT;      //set suspend_resume_state
                 if (ts->esd_handle_support && ts->is_incell_panel && (ts->tp_suspend_order == LCD_TP_SUSPEND)) {
@@ -6710,7 +6677,7 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
                         disable_irq_nosync(ts->irq);
                     }
                 }
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
             } else if (event == MSM_DRM_EVENT_BLANK) {   //event
 #else
             } else if (event == FB_EVENT_BLANK) {   //event
@@ -6721,7 +6688,7 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
                     tp_suspend(ts->dev);
                 }
             }
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
         } else if (*blank == MSM_DRM_BLANK_UNBLANK) {//resume
             if (event == MSM_DRM_EARLY_EVENT_BLANK) {    //early event
 #else
@@ -6729,9 +6696,6 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
             if (event == FB_EARLY_EVENT_BLANK) {    //early event
 #endif
                 timed_out = wait_for_completion_timeout(&ts->pm_complete, 0.5 * HZ); //wait suspend over for 0.5s
-                if ((0 == timed_out) || (ts->pm_complete.done)) {
-                    TPD_INFO("completion state, timed_out:%d, done:%d\n", timed_out, ts->pm_complete.done);
-                }
 
                 ts->suspend_state = TP_RESUME_EARLY_EVENT;      //set suspend_resume_state
 
@@ -6742,7 +6706,7 @@ static int fb_notifier_callback(struct notifier_block *self, unsigned long event
                         disable_irq_nosync(ts->irq);
                     }
                 }
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
             } else if (event == MSM_DRM_EVENT_BLANK) {   //event
 #else
             } else if (event == FB_EVENT_BLANK) {   //event

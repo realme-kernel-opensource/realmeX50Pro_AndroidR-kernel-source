@@ -622,17 +622,6 @@ config QTI_MAXIM_FAN_CONTROLLER
 	  Also, this driver initializes the power for the fan controller
 	  and exposes sysfs node to control different speeds of fan.
 
-#ifdef VENDOR_EDIT
-#Fuchun.Liao@BSP.CHG.Basic 2018/11/26 modify for rf cable monitor
-config OPPO_RF_CABLE_MONITOR
-	bool "OPPO rf cable monitor system"
-	depends on OF
-	select PINMUX
-	default n
-	help
-	  Say Y here to enable OPPO rf cable monitor system support
-#endif /* VENDOR_EDIT */
-
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -647,14 +636,6 @@ source "drivers/misc/echo/Kconfig"
 source "drivers/misc/cxl/Kconfig"
 source "drivers/misc/ocxl/Kconfig"
 source "drivers/misc/cardreader/Kconfig"
-#ifdef VENDOR_EDIT
-#tianwen@PSW.BSP.BOOT, 2016/06/22, Add for support press sensor
-source "drivers/misc/cs_press/Kconfig"
-#endif
-#ifdef OPLUS_FEATURE_TP_BASIC
-#Zengpeng.Chen@BSP.TP.Misc, 2020/08/06, Add for support color ctrl device
-source "drivers/misc/colorctrl/Kconfig"
-#endif /* OPLUS_FEATURE_TP_BASIC */
 #ifdef VENDOR_EDIT//Qingjun.Wang@BSP.Haptic,add 2020/03/17 for vib aw8697
 source "drivers/misc/aw8697_haptic/Kconfig"
 #endif

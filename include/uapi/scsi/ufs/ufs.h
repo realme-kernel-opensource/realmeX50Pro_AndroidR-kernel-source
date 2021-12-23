@@ -52,11 +52,8 @@ enum attr_idn {
 	QUERY_ATTR_IDN_AVAIL_WB_BUFF_SIZE       = 0x1D,
 	QUERY_ATTR_IDN_WB_BUFF_LIFE_TIME_EST    = 0x1E,
 	QUERY_ATTR_IDN_CURR_WB_BUFF_SIZE        = 0x1F,
-#ifdef OPLUS_FEATURE_UFSPLUS
-//Jinghua.Yu@BSP.Storage.UFS 2020/06/12, Add TAG for UFS plus
 #if defined(CONFIG_UFSFEATURE)
 	QUERY_ATTR_IDN_SUP_VENDOR_OPTIONS		= 0xFF,
-#endif
 #endif
 };
 

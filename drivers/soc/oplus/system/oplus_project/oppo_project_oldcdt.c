@@ -12,11 +12,11 @@
 #include <linux/syscalls.h>
 
 #ifdef CONFIG_OPLUS_SYSTEM_KERNEL_QCOM
-#include <soc/oplus/system/oppo_project.h>
-#include <soc/oplus/system/oppo_project_oldcdt.h>
+#include <soc/oplus/oppo_project.h>
+#include <soc/oplus/oppo_project_oldcdt.h>
 #else
-#include <soc/oppo/oppo_project.h>
-#include <soc/oppo/oppo_project_oldcdt.h>
+#include <soc/oplus/oppo_project.h>
+#include <soc/oplus/oppo_project_oldcdt.h>
 #endif
 
 /////////////////////////////////////////////////////////////

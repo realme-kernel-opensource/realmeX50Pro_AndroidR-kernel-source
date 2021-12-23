@@ -8,33 +8,27 @@ config OPPO_COMMON_SOFT
         Maybe this value is from CDT or dynamic identify by hardware
         id.
 
-config OPPO_DEVICE_IFNO
+config OPPO_DEVICE_INFO
   bool "config oppo devinfo"
   select OPPO_ARCH_FILE
   help
         define this config to compile devinfo.c for device register
-
-source "drivers/soc/oplus/device_info/Kconfig"
 #endif /* OPLUS_FEATURE_TP_BASIC */
 
-#ifdef OPLUS_FEATURE_GPIO_NC
-config OPLUS_GPIO_NC
-  bool "config oplus gpio nc"
+#ifdef CONFIG_OPLUS_SYSTEM_KERNEL
+#Wen.Luo@Bsp.Kernel.Stability,2020/4/20,OPLUS_SYSTEM_KERNEL_QCOM/OPLUS_SYSTEM_KERNEL_MTK add for qcom/mtk platform
+config OPLUS_SYSTEM_KERNEL_QCOM
+  bool "config oplus system feature "
+  default y
   help
-        define this config to compile oplus_gpio.c for device register
-#endif
+        define this config to Distinguish between qcom and mtk platform
+#endif /*CONFIG_OPLUS_SYSTEM_KERNEL*/
 
-#ifdef OPLUS_FEATURE_LOWMEM_DBG
-#Hailong.Liu@BSP.Kernel.MM, 2020/06/19, Add for dump memory usage when lowmmem occurs.
-source "drivers/soc/oplus/lowmem_dbg/Kconfig"
-##endif /* OPLUS_FEATURE_LOWMEM_DBG */
-
-#ifdef OPLUS_FEATURE_MEMLEAK_DETECT
-#Hailong.Liu@BSP.MM 2019/03/18, Add for svelte
-source "drivers/soc/oplus/oppo_svelte/Kconfig"
-#endif /* OPLUS_FEATURE_MEMLEAK_DETECT */
-
-#ifdef OPLUS_FEATURE_THERMAL_HORAE
-#shuze.ma@BSP.Power.Thermal 2020/08/17, Add for thermal
-source "drivers/soc/oplus/thermal/Kconfig"
-#endif /* OPLUS_FEATURE_THERMAL_HORAE */
+#wen.luo@BSP.Kernel.Stability 2020/03/25 add for oplus kernel system
+source "drivers/soc/oplus/system/Kconfig"
+#endif /* VENDOR_EDIT */
+#ifdef OPLUS_FEATURE_SENSOR_SMEM
+#qiuzuolin@BSP.Sensor.Basic 2020/07/31 add for oplus sensor smem
+source "drivers/soc/oplus/sensor/Kconfig"
+#endif /* OPLUS_FEATURE_SENSOR_SMEM */
+source "drivers/soc/oplus/device_info/Kconfig"

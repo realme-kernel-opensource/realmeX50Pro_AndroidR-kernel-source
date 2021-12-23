@@ -37,12 +37,7 @@ temp_show(struct device *dev, struct device_attribute *attr, char *buf)
 	struct thermal_zone_device *tz = to_thermal_zone(dev);
 	int temperature, ret;
 
-#ifdef OPLUS_BUG_STABILITY
-//wen.luo@bsp.kernel.stability, 2020/6/18 ,workaround for get_temp temp ss reboot
-	ret = thermal_zone_get_temp_workaround(tz, &temperature);
-#else
 	ret = thermal_zone_get_temp(tz, &temperature);
-#endif
 
 	if (ret)
 		return ret;

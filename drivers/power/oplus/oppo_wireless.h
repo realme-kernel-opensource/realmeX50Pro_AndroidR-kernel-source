@@ -8,8 +8,8 @@
 #endif
 #include <linux/timer.h>
 #include <linux/slab.h>
-#include <soc/oppo/device_info.h>
-#include <soc/oppo/oppo_project.h>
+#include <soc/oplus/device_info.h>
+#include <soc/oplus/oppo_project.h>
 #include <linux/firmware.h>
 
 

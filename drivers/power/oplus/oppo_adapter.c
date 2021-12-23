@@ -14,6 +14,9 @@
 * Revision 1.1     2018-04-12        Fanhong.Kong@BSP.CHG.Basic        Divided for svooc from oppo_vooc.c 
 ************************************************************************************************************/
 
+#ifndef _OPPO_ADAPTER_H
+#define _OPPO_ADAPTER_H
+
 #include <linux/delay.h>
 #include <linux/proc_fs.h>
 #include <linux/uaccess.h>
@@ -23,8 +26,6 @@
 #include "oppo_gauge.h"
 #include "oppo_adapter.h"
 
-
-
 extern int enable_charger_log;
 #define adapter_xlog_printk(num, fmt, ...) \
         do { \
@@ -33,11 +34,7 @@ extern int enable_charger_log;
         } \
 } while (0)
 
-
 static struct oppo_adapter_chip *g_adapter_chip = NULL;
-
-
-
 
 static void oppo_adpater_awake_init(struct oppo_adapter_chip *chip)
 {
@@ -154,4 +151,4 @@ bool oppo_adapter_check_chip_is_null(void)
                 return false;
         }
 }
-
+#endif

@@ -34,7 +34,7 @@
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
 #include <linux/rtc.h>
-#include <soc/oppo/device_info.h>
+#include <soc/oplus/device_info.h>
 
 #include "oppo_vooc.h"
 #include "oppo_gauge.h"

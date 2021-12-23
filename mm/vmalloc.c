@@ -38,11 +38,6 @@
 #include <asm/shmparam.h>
 
 #include "internal.h"
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
-/* Kui.Zhang@BSP.Kernel.MM, 2020-02-26, used for vmalloc_debug */
-static unsigned int save_vmalloc_stack(unsigned long flags, struct vmap_area *va);
-static void dec_vmalloc_stat(struct vmap_area *va);
-#endif
 
 struct vfree_deferred {
 	struct llist_head list;
@@ -1270,6 +1265,7 @@ static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
 	struct llist_node *valist;
 	struct vmap_area *va;
 	struct vmap_area *n_va;
+	unsigned long flush_all_threshold = VMALLOC_END - VMALLOC_START;
 
 	lockdep_assert_held(&vmap_purge_lock);
 
@@ -1288,7 +1284,10 @@ static bool __purge_vmap_area_lazy(unsigned long start, unsigned long end)
 			end = va->va_end;
 	}
 
-	flush_tlb_kernel_range(start, end);
+	if (end - start <= flush_all_threshold)
+		flush_tlb_kernel_range(start, end);
+	else
+		flush_tlb_all();
 	resched_threshold = lazy_max_pages() << 1;
 
 	spin_lock(&vmap_area_lock);
@@ -2044,19 +2043,11 @@ EXPORT_SYMBOL_GPL(map_vm_area);
 static void setup_vmalloc_vm(struct vm_struct *vm, struct vmap_area *va,
 			      unsigned long flags, const void *caller)
 {
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
-	/* Kui.Zhang@BSP.Kernel.MM, 2020-02-26, save vmalloc called stack. */
-	unsigned int handle = save_vmalloc_stack(flags, va);
-#endif
 	spin_lock(&vmap_area_lock);
 	vm->flags = flags;
 	vm->addr = (void *)va->va_start;
 	vm->size = va->va_end - va->va_start;
 	vm->caller = caller;
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
-	/* Kui.Zhang@BSP.Kernel.MM, 2020-02-26, save stach hash*/
-	vm->hash = handle;
-#endif
 	va->vm = vm;
 	va->flags |= VM_VM_AREA;
 	spin_unlock(&vmap_area_lock);
@@ -2180,11 +2171,6 @@ static struct vm_struct *__remove_vm_area(struct vmap_area *va)
 {
 	struct vm_struct *vm = va->vm;
 
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_VMALLOC_DEBUG)
-	/* Kui.Zhang@BSP.Kernel.MM, 2020-02-26, update the count while
-	 * vfree. */
-	dec_vmalloc_stat(va);
-#endif
 	spin_lock(&vmap_area_lock);
 	va->vm = NULL;
 	va->flags &= ~VM_VM_AREA;
@@ -2478,7 +2464,7 @@ void *__vmalloc_node_range(unsigned long size, unsigned long align,
 	 * First make sure the mappings are removed from all page-tables
 	 * before they are freed.
 	 */
-	vmalloc_sync_all();
+	vmalloc_sync_unmappings();
 
 	/*
 	 * In this function, newly allocated vm_struct has VM_UNINITIALIZED
@@ -3028,16 +3014,19 @@ int remap_vmalloc_range(struct vm_area_struct *vma, void *addr,
 EXPORT_SYMBOL(remap_vmalloc_range);
 
 /*
- * Implement a stub for vmalloc_sync_all() if the architecture chose not to
- * have one.
+ * Implement stubs for vmalloc_sync_[un]mappings () if the architecture chose
+ * not to have one.
  *
  * The purpose of this function is to make sure the vmalloc area
  * mappings are identical in all page-tables in the system.
  */
-void __weak vmalloc_sync_all(void)
+void __weak vmalloc_sync_mappings(void)
 {
 }
 
+void __weak vmalloc_sync_unmappings(void)
+{
+}
 
 static int f(pte_t *pte, pgtable_t table, unsigned long addr, void *data)
 {
@@ -3464,11 +3453,7 @@ static int s_show(struct seq_file *m, void *p)
 	seq_printf(m, "0x%pK-0x%pK %7ld",
 		v->addr, v->addr + v->size, v->size);
 
-#ifdef VENDOR_EDIT //wanghao@bsp.drv modify for android.bg get pss too slow
-    if (v->caller && (strcmp(current->comm, "android.bg") != 0))
-#else
-    if (v->caller)
-#endif
+	if (v->caller)
 		seq_printf(m, " %pS", v->caller);
 
 	if (v->nr_pages)
@@ -3518,16 +3503,3 @@ module_init(proc_vmalloc_init);
 
 #endif
 
-#ifdef CONFIG_KMALLOC_DEBUG
-#ifdef OPLUS_FEATURE_MEMLEAK_DETECT
-/* Kui.Zhang@BSP.Kernel.MM, 2020-02-26, vmalloc debug used.*/
-#include "malloc_track/vmalloc_track.c"
-#else
-int __init __weak create_vmalloc_debug(struct proc_dir_entry *parent)
-{
-	pr_warn("OPLUS_FEATURE_MEMLEAK_DETECT is off.\n");
-	return 0;
-}
-EXPORT_SYMBOL(create_vmalloc_debug);
-#endif
-#endif

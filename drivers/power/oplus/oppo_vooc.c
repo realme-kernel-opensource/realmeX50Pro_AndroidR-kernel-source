@@ -21,7 +21,6 @@
 #include "oppo_vooc.h"
 #include "oppo_gauge.h"
 #include "oppo_adapter.h"
-#include "oplus_debug_info.h"
 
 #define VOOC_NOTIFY_FAST_PRESENT			0x52
 #define VOOC_NOTIFY_FAST_ABSENT				0x54
@@ -209,7 +208,6 @@ static void check_charger_out_work_func(struct work_struct *work)
 		chip->vops->reset_fastchg_after_usbout(chip);
 		oppo_chg_clear_chargerid_info();
 		oppo_vooc_battery_update();
-		oplus_vooc_reset_temp_range(chip);
 		vooc_xlog_printk(CHG_LOG_CRTI, "charger out, chg_vol:%d\n", chg_vol);
 	}
 }
@@ -224,35 +222,6 @@ static void vooc_watchdog_work_func(struct work_struct *work)
 	chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
 	oppo_chg_set_charger_type_unknown();
 	oppo_vooc_set_awake(chip, false);
-	oplus_vooc_reset_temp_range(chip);
-}
-
-
-static void reset_vooc_start_temp_dwork_func(struct work_struct *work)
-{
-	struct delayed_work *dwork = to_delayed_work(work);
-	struct oppo_vooc_chip *chip = container_of(dwork, struct oppo_vooc_chip, reset_vooc_start_temp_dwork);
-
-	chip->vooc_start_temp = INVALID_TEMPERATUE;
-	chip->fastchg_strategy_change_status = 0;
-}
-
-static void oppo_vooc_cancel_reset_start_temp_dwork(struct oppo_vooc_chip *chip)
-{
-	if (delayed_work_pending(&chip->reset_vooc_start_temp_dwork)) {
-		cancel_delayed_work(&chip->reset_vooc_start_temp_dwork);
-	}
-}
-
-static void oppo_vooc_reset_start_temp(struct oppo_vooc_chip *chip, bool use_delay)
-{
-	oppo_vooc_cancel_reset_start_temp_dwork(chip);
-	if (use_delay) {
-		schedule_delayed_work(&chip->reset_vooc_start_temp_dwork,
-				round_jiffies_relative(msecs_to_jiffies(6000)));
-	} else {
-		schedule_delayed_work(&chip->reset_vooc_start_temp_dwork, 0);
-	}
 }
 
 static void oppo_vooc_check_charger_out(struct oppo_vooc_chip *chip)
@@ -262,48 +231,13 @@ static void oppo_vooc_check_charger_out(struct oppo_vooc_chip *chip)
 		round_jiffies_relative(msecs_to_jiffies(3000)));
 }
 
-static int oplus_vooc_init_soc_range(struct oppo_vooc_chip *chip, int soc)
-{
-	if (soc >= 0 && soc <= 50) {
-		chip->soc_range = 0;
-	} else if (soc >= 51 && soc <= 75) {
-		chip->soc_range = 1;
-	} else if (soc >= 76 && soc <= 85) {
-		chip->soc_range = 2;
-	} else {
-		chip->soc_range = 3;
-	}
-	chg_err("chip->soc_range[%d], soc[%d]", chip->soc_range, soc);
-	return chip->soc_range;
-}
-
-static int oplus_vooc_init_temp_range(struct oppo_vooc_chip *chip, int vbat_temp_cur)
-{
-	if (vbat_temp_cur < chip->vooc_little_cold_temp) { /*0-5C*/
-		chip->vooc_temp_cur_range = FASTCHG_TEMP_RANGE_LITTLE_COLD;
-	} else if (vbat_temp_cur < chip->vooc_cool_temp) { /*5-12C*/
-		chip->vooc_temp_cur_range = FASTCHG_TEMP_RANGE_COOL;
-	} else if (vbat_temp_cur < chip->vooc_little_cool_temp) { /*12-16C*/
-		chip->vooc_temp_cur_range = FASTCHG_TEMP_RANGE_LITTLE_COOL;
-	} else if (vbat_temp_cur < chip->vooc_normal_low_temp) { /*16-25C*/
-		chip->vooc_temp_cur_range = FASTCHG_TEMP_RANGE_NORMAL_LOW;
-	} else {/*25C-43C*/
-		chip->vooc_temp_cur_range = FASTCHG_TEMP_RANGE_NORMAL_HIGH;
-	}
-	chg_err("chip->vooc_temp_cur_range[%d], vbat_temp_cur[%d]", chip->vooc_temp_cur_range, vbat_temp_cur);
-	return chip->vooc_temp_cur_range;
-}
-
 int multistepCurrent[] = {3500, 2000, 3000, 4000, 5000, 6000, };
 
-#define COUNTS	3
-#define VOOC_TEMP_RANGE_THD 20
+#define COUNTS	2
 static int oppo_vooc_set_current_when_bleow_setting_batt_temp
 		(struct oppo_vooc_chip *chip, int vbat_temp_cur)
 {
 	static int ret = 0;
-	int soc;
-
 
 	switch (chip->fastchg_batt_temp_status) {
 		case BAT_TEMP_NATURAL:
@@ -313,7 +247,7 @@ static int oppo_vooc_set_current_when_bleow_setting_batt_temp
 			} else if (vbat_temp_cur > chip->vooc_little_cool_temp) {
 				chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
 				ret = chip->vooc_strategy_normal_current;
-			} else if (vbat_temp_cur >= chip->vooc_cool_temp) {
+			} else if (vbat_temp_cur > chip->vooc_cool_temp) {
 				chip->fastchg_batt_temp_status = BAT_TEMP_LITTLE_COOL;
 				ret = chip->vooc_normal_to_little_cool_current;
 			} else {
@@ -351,38 +285,17 @@ static int oppo_vooc_set_current_when_bleow_setting_batt_temp
 					ret = 2;
 				}
 			} else {
-				if (chip->vooc_low_temp_smart_charge) {
-					chip->fastchg_batt_temp_status = BAT_TEMP_COOL;
-					ret = chip->vooc_strategy_normal_current;
-					chip->vooc_strategy_change_count++;
-					soc = oppo_gauge_get_prev_batt_soc();
-					if ((soc < chip->vooc_high_soc) && (chip->vooc_strategy_change_count >= COUNTS)) {
-						chip->vooc_strategy_change_count = 0;
-						if (!(chip->fastchg_strategy_change_status & (1 << FASTCHG_STRATEGY_COLD_TO_LITTLE_COLD))) {
-							chip->fastchg_strategy_change_status |= (1 << FASTCHG_STRATEGY_COLD_TO_LITTLE_COLD);
-							chip->vooc_start_temp = vbat_temp_cur;
-							chip->fastchg_batt_temp_status = BAT_TEMP_EXIT;
-							chip->vooc_cool_temp -= VOOC_TEMP_RANGE_THD;
-						}
-					}
-				} else {
-					chip->vooc_strategy_change_count = 0;
-					chip->fastchg_batt_temp_status = BAT_TEMP_COOL;
-					ret = chip->vooc_strategy_normal_current;
-				}
+				chip->vooc_strategy_change_count = 0;
+				chip->fastchg_batt_temp_status = BAT_TEMP_COOL;
+				ret = chip->vooc_strategy_normal_current;
 			}
 			break;
 		case BAT_TEMP_LITTLE_COOL:
 			if (vbat_temp_cur < chip->vooc_cool_temp) {
 				chip->vooc_strategy_change_count++;
-				soc = oppo_gauge_get_prev_batt_soc();
 				if (chip->vooc_strategy_change_count >= COUNTS) {
 					chip->vooc_strategy_change_count = 0;
-					if (!(chip->fastchg_strategy_change_status & (1 << FASTCHG_STRATEGY_LITTLE_COLD_TO_COLD))) {
-						chip->fastchg_strategy_change_status |= (1 << FASTCHG_STRATEGY_LITTLE_COLD_TO_COLD);
-						chip->vooc_start_temp = vbat_temp_cur;
-						chip->fastchg_batt_temp_status = BAT_TEMP_EXIT;
-					}
+					chip->fastchg_batt_temp_status = BAT_TEMP_EXIT;
 					ret = chip->vooc_strategy_normal_current;
 				}
 			} else if(vbat_temp_cur > chip->vooc_little_cool_to_normal_temp){
@@ -395,8 +308,7 @@ static int oppo_vooc_set_current_when_bleow_setting_batt_temp
 			}else{
 				chip->vooc_strategy_change_count = 0;
 				chip->fastchg_batt_temp_status = BAT_TEMP_LITTLE_COOL;
-				ret = chip->vooc_normal_to_little_cool_current;
-			}
+				ret = chip->vooc_normal_to_little_cool_current;			}
 			break;
 		case BAT_TEMP_HIGH0:
 			if (vbat_temp_cur > chip->vooc_strategy1_batt_high_temp1) {
@@ -531,48 +443,22 @@ static int oppo_vooc_set_current_when_bleow_setting_batt_temp
 		default:
 			break;
 	}
-
-	vooc_xlog_printk(CHG_LOG_CRTI, "the ret: %d, the temp =%d, status = %d strategy_status = %d\r\n",
-				ret, vbat_temp_cur, chip->fastchg_batt_temp_status, chip->fastchg_strategy_change_status);
-
+	vooc_xlog_printk(CHG_LOG_CRTI, "the ret: %d, the temp =%d, status = %d\r\n", ret, vbat_temp_cur, chip->fastchg_batt_temp_status);
 	return ret;
 }
 
 static int oppo_vooc_set_current_when_up_setting_batt_temp(struct oppo_vooc_chip *chip, int vbat_temp_cur)
 {
 	static int ret = 0;
-	int soc;
 
 	switch (chip->fastchg_batt_temp_status) {
 		case BAT_TEMP_NATURAL:
 			if (vbat_temp_cur > chip->vooc_strategy2_batt_up_temp1) {
 				chip->fastchg_batt_temp_status = BAT_TEMP_HIGH0;
 				ret = chip->vooc_strategy2_high0_current;
-				chip->vooc_strategy_change_count = 0;
 			} else {
-				if (chip->vooc_low_temp_smart_charge) {
-					if (vbat_temp_cur >= chip->vooc_cool_temp) {
-						chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
-						ret = chip->vooc_strategy_normal_current;
-						chip->vooc_strategy_change_count = 0;
-					}
-					else {
-						chip->vooc_strategy_change_count++;
-						soc = oppo_gauge_get_prev_batt_soc();
-						if (chip->vooc_strategy_change_count >= COUNTS) {
-							chip->vooc_strategy_change_count = 0;
-							if (!(chip->fastchg_strategy_change_status & (1 << FASTCHG_STRATEGY_LITTLE_COLD_TO_COLD))) {
-								chip->fastchg_strategy_change_status |= (1 << FASTCHG_STRATEGY_LITTLE_COLD_TO_COLD);
-								chip->vooc_start_temp = vbat_temp_cur;
-								chip->fastchg_batt_temp_status = BAT_TEMP_EXIT;
-							}
-						}
-					}
-				}
-				else {
-					chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
-					ret = chip->vooc_strategy_normal_current;
-				}
+				chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
+				ret = chip->vooc_strategy_normal_current;
 			}
 			break;
 		case BAT_TEMP_HIGH0:
@@ -682,8 +568,7 @@ static int oppo_vooc_set_current_when_up_setting_batt_temp(struct oppo_vooc_chip
 		default:
 			break;
 	}
-	vooc_xlog_printk(CHG_LOG_CRTI, "the ret: %d, the temp =%d, status = %d, strategy_status = %d\r\n",
-				ret, vbat_temp_cur, chip->fastchg_batt_temp_status, chip->fastchg_strategy_change_status);
+	vooc_xlog_printk(CHG_LOG_CRTI, "the ret: %d, the temp =%d, status = %d\r\n", ret, vbat_temp_cur, chip->fastchg_batt_temp_status);
 	return ret;
 }
 
@@ -691,21 +576,14 @@ int oppo_vooc_get_smaller_battemp_cooldown(int ret_batt, int ret_cool){
 	int ret_batt_current =0;
 	int ret_cool_current = 0;
 	int i = 0;
-	struct oppo_vooc_chip *chip = g_vooc_chip;
-
 	if( ret_batt > 0 && ret_batt < ARRAY_SIZE(multistepCurrent)+1
 		&& ret_cool > 0 && ret_cool < ARRAY_SIZE(multistepCurrent)+1){
 		ret_batt_current =  multistepCurrent[ret_batt -1];
 		ret_cool_current = multistepCurrent[ret_cool -1];
-		oplus_chg_debug_get_cooldown_current(ret_batt_current, ret_cool_current);
 		ret_cool_current = ret_cool_current < ret_batt_current ? ret_cool_current : ret_batt_current;
 		for(i = 0 ; i < ARRAY_SIZE(multistepCurrent); i++){
-			if(multistepCurrent[i] == ret_cool_current) {
-				if (chip) {
-					chip->vooc_chg_current_now = ret_cool_current;
-				}
+			if(multistepCurrent[i] == ret_cool_current)
 				return i + 1;
-			}
 		}
 	}
 
@@ -762,7 +640,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 				&& (!adapter_fw_ver_info) && (!adapter_model_factory)) {	/*data recvd not start from "101"*/
 			vooc_xlog_printk(CHG_LOG_CRTI, "  data err:0x%x\n", data);
 			chip->allow_reading = true;
-			oppo_vooc_reset_start_temp(chip, false);
 			if (chip->fastchg_started == true) {
 				chip->fastchg_started = false;
 				chip->fastchg_to_normal = false;
@@ -809,9 +686,7 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 		phone_mcu_updated = false;
 		normalchg_disabled = false;
 		first_detect_batt_temp = true;
-		if (!chip->vooc_low_temp_smart_charge) {
-			chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
-		}
+		chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
 		chip->vooc_strategy_change_count = 0;
 		if (chip->adapter_update_real == ADAPTER_FW_UPDATE_FAIL) {
 			chip->adapter_update_real = ADAPTER_FW_UPDATE_NONE;
@@ -825,7 +700,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 			chip->fastchg_dummy_started = false;
 			chip->fastchg_to_warm = false;
 			chip->btb_temp_over = false;
-			oppo_vooc_cancel_reset_start_temp_dwork(chip);
 		} else {
 			chip->allow_reading = false;
 			chip->fastchg_dummy_started = true;
@@ -873,7 +747,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 			"fastchg stop unexpectly, switch off fastchg\n");
 		oppo_chg_set_chargerid_switch_val(0);
 		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-		oppo_vooc_reset_start_temp(chip, false);
 		//del_timer(&chip->watchdog);
 		oppo_vooc_del_watchdog_timer(chip);
 		chip->allow_reading = true;
@@ -906,7 +779,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 			oppo_set_fg_i2c_err_occured(false);
 			oppo_chg_set_chargerid_switch_val(0);
 			chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-			oppo_vooc_reset_start_temp(chip, false);
 			data_err = true;
 		}
 	ret_info = 0x2;
@@ -925,7 +797,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 			}
 			if (oppo_get_fg_i2c_err_occured() == false) {
 				temp = oppo_gauge_get_batt_temperature();
-				chip->temp_range_init = false;
 			}
 			if (oppo_get_fg_i2c_err_occured() == false) {
 				current_now = oppo_gauge_get_batt_current();
@@ -1021,49 +892,17 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 		vooc_xlog_printk(CHG_LOG_CRTI, "VOOC_NOTIFY_NORMAL_TEMP_FULL\r\n");
 		oppo_chg_set_chargerid_switch_val(0);
 		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-		oppo_vooc_reset_start_temp(chip, false);
 		//del_timer(&chip->watchdog);
 		oppo_vooc_del_watchdog_timer(chip);
 		ret_info = 0x2;
 	} else if (data == VOOC_NOTIFY_LOW_TEMP_FULL) {
-		if (chip->vooc_low_temp_smart_charge) {
-			oppo_vooc_cancel_reset_start_temp_dwork(chip);
-			chip->temp_range_init = true;
-			chip->w_soc_temp_to_mcu = true;
-			if (chip->vooc_start_temp == INVALID_TEMPERATUE) {
-				chip->vooc_start_temp = oppo_gauge_get_prev_batt_temperature();
-			}
-			oplus_vooc_init_temp_range(chip, chip->vooc_start_temp);
-			if (oplus_vooc_get_reply_bits() == 7) {
-				soc = oppo_gauge_get_prev_batt_soc();
-				oplus_vooc_init_soc_range(chip, soc);
-				if (chip->vooc_temp_cur_range) {
-					ret_info = (chip->soc_range << 4) | (chip->vooc_temp_cur_range - 1);
-				} else {
-					ret_info = (chip->soc_range << 4) | 0x0;
-				}
-			}
-			else {
-				if (chip->vooc_temp_cur_range) {
-					ret_info = (chip->vooc_temp_cur_range - 1);
-				} else {
-					ret_info = 0x0;
-				}
-			}
-			chip->vooc_start_temp = INVALID_TEMPERATUE;
-			chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
-		} else {
-			vooc_xlog_printk(CHG_LOG_CRTI,
-					" fastchg low temp full, switch NORMAL_CHARGER_MODE\n");
-			oppo_chg_set_chargerid_switch_val(0);
-			chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-			oppo_vooc_reset_start_temp(chip, false);
-			/*
-			del_timer(&chip->watchdog);
-			*/
-			oppo_vooc_del_watchdog_timer(chip);
-			ret_info = 0x2;
-		}
+		vooc_xlog_printk(CHG_LOG_CRTI,
+			" fastchg low temp full, switch NORMAL_CHARGER_MODE\n");
+		oppo_chg_set_chargerid_switch_val(0);
+		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
+		//del_timer(&chip->watchdog);
+		oppo_vooc_del_watchdog_timer(chip);
+		ret_info = 0x2;
 	} else if (data == VOOC_NOTIFY_BAD_CONNECTED) {
 		vooc_xlog_printk(CHG_LOG_CRTI,
 			" fastchg bad connected, switch NORMAL_CHARGER_MODE\n");
@@ -1071,7 +910,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 		chip->btb_temp_over = false;	/*to switch to normal mode*/
 		oppo_chg_set_chargerid_switch_val(0);
 		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-		oppo_vooc_reset_start_temp(chip, false);
 		//del_timer(&chip->watchdog);
 		oppo_vooc_del_watchdog_timer(chip);
 		ret_info = 0x2;
@@ -1082,7 +920,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 			" fastchg temp > 45 or < 20, switch NORMAL_CHARGER_MODE\n");
 		oppo_chg_set_chargerid_switch_val(0);
 		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-		oppo_vooc_reset_start_temp(chip, false);
 		//del_timer(&chip->watchdog);
 		oppo_vooc_del_watchdog_timer(chip);
 		ret_info = 0x2;
@@ -1100,7 +937,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 		oppo_vooc_setup_watchdog_timer(chip, 25000);
 		ret_info = 0x2;
 		charger_abnormal_log = CRITICAL_LOG_VOOC_BTB;
-		oppo_vooc_reset_start_temp(chip, false);
 	} else if (data == VOOC_NOTIFY_FIRMWARE_UPDATE) {
 		vooc_xlog_printk(CHG_LOG_CRTI, " firmware update, get fw_ver ready!\n");
 		/*ready to get fw_ver*/
@@ -1153,7 +989,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 		oppo_chg_clear_chargerid_info();
 		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
 		chip->vops->reset_mcu(chip);
-		oppo_vooc_reset_start_temp(chip, false);
 		msleep(100);	/*avoid i2c conflict*/
 		chip->allow_reading = true;
 		chip->fastchg_started = false;
@@ -1173,7 +1008,6 @@ static void oppo_vooc_fastchg_func(struct work_struct *work)
 		vooc_xlog_printk(CHG_LOG_CRTI, "The temperature is lower than 12 du during the fast charging process\n");
 		oppo_chg_set_chargerid_switch_val(0);
 		chip->vops->set_switch_mode(chip, NORMAL_CHARGER_MODE);
-		oppo_vooc_reset_start_temp(chip, true);
 		oppo_vooc_del_watchdog_timer(chip);
 	}
 
@@ -1212,15 +1046,13 @@ out:
 		if (data == VOOC_NOTIFY_BAD_CONNECTED)
 			charger_abnormal_log = CRITICAL_LOG_VOOC_BAD_CONNECTED;
 	} else if (data == VOOC_NOTIFY_LOW_TEMP_FULL) {
-		if (!chip->vooc_low_temp_smart_charge) {
-			usleep_range(350000, 350000);
-			chip->allow_reading = true;
-			chip->fastchg_ing = false;
-			chip->fastchg_low_temp_full = true;
-			chip->fastchg_to_normal = false;
-			chip->fastchg_started = false;
-			chip->fastchg_to_warm = false;
-		}
+		usleep_range(350000, 350000);
+		chip->allow_reading = true;
+		chip->fastchg_ing = false;
+		chip->fastchg_low_temp_full = true;
+		chip->fastchg_to_normal = false;
+		chip->fastchg_started = false;
+		chip->fastchg_to_warm = false;
 	} else if (data == VOOC_NOTIFY_TEMP_OVER) {
 		usleep_range(350000, 350000);
 		chip->fastchg_ing = false;
@@ -1249,10 +1081,8 @@ out:
 			|| data == VOOC_NOTIFY_BAD_CONNECTED
 			|| data == VOOC_NOTIFY_LOW_TEMP_FULL
 			|| chip->fastchg_batt_temp_status == BAT_TEMP_EXIT) {
-		if ((!chip->vooc_low_temp_smart_charge) || (data != VOOC_NOTIFY_LOW_TEMP_FULL)) {
-			oppo_chg_set_charger_type_unknown();
-			oppo_vooc_check_charger_out(chip);
-		}
+		oppo_chg_set_charger_type_unknown();
+		oppo_vooc_check_charger_out(chip);
 	} else if (data == VOOC_NOTIFY_BTB_TEMP_OVER) {
 		oppo_chg_set_charger_type_unknown();
 	}
@@ -1282,23 +1112,13 @@ out:
 		|| (data == VOOC_NOTIFY_NORMAL_TEMP_FULL)
 		|| (data == VOOC_NOTIFY_BAD_CONNECTED)
 		|| (data == VOOC_NOTIFY_TEMP_OVER)) {
-		if ((!chip->vooc_low_temp_smart_charge) || (data != VOOC_NOTIFY_LOW_TEMP_FULL)) {
-			oppo_vooc_battery_update();
+		oppo_vooc_battery_update();
 #ifdef CHARGE_PLUG_IN_TP_AVOID_DISTURB
-			charge_plug_tp_avoid_distrub(1, is_oppo_fast_charger);
+		charge_plug_tp_avoid_distrub(1, is_oppo_fast_charger);
 #endif
-			if (chip->vooc_low_temp_smart_charge) {
-				if (!(chip->fastchg_batt_temp_status == BAT_TEMP_EXIT)) {
-					oplus_vooc_reset_temp_range(chip);
-					chip->fastchg_strategy_change_status = 0;
-				}
-			}
-			oppo_vooc_set_awake(chip, false);
-		}
+		oppo_vooc_set_awake(chip, false);
 	} else if (data_err) {
 		data_err = false;
-		oplus_vooc_reset_temp_range(chip);
-		chip->fastchg_strategy_change_status = 0;
 		oppo_vooc_battery_update();
 #ifdef CHARGE_PLUG_IN_TP_AVOID_DISTURB
 		charge_plug_tp_avoid_distrub(1, is_oppo_fast_charger);
@@ -1347,7 +1167,6 @@ void fw_update_thread(struct work_struct *work)
 				sprintf(version,"%d", chip->fw_data_version);
 				sprintf(chip->manufacture_info.version,"%s", version);
 				if (ret == FW_CHECK_MODE) {
-					chg_debug("update finish, then clean fastchg_dummy , fastchg_started, watch_dog\n");
 					chip->fastchg_dummy_started = false;
 					chip->fastchg_started = false;
 					chip->allow_reading = true;
@@ -1364,7 +1183,6 @@ void fw_update_thread(struct work_struct *work)
 	}else {
 		ret = chip->vops->fw_check_then_recover(chip);
 		if (ret == FW_CHECK_MODE) {
-			chg_debug("update finish, then clean fastchg_dummy , fastchg_started, watch_dog\n");
 			chip->fastchg_dummy_started = false;
 			chip->fastchg_started = false;
 			del_timer(&chip->watchdog);
@@ -1495,9 +1313,6 @@ void oppo_vooc_init(struct oppo_vooc_chip *chip)
 	chip->adapter_update_report = chip->adapter_update_real;
 	chip->mcu_update_ing = false;
 	chip->mcu_boot_by_gpio = false;
-	chip->temp_range_init = false;
-	chip->vooc_start_temp = INVALID_TEMPERATUE;
-	chip->w_soc_temp_to_mcu = false;
 	chip->dpdm_switch_mode = NORMAL_CHARGER_MODE;
 	chip->fast_chg_type = FASTCHG_CHARGER_TYPE_UNKOWN;
 	/*chip->batt_psy = power_supply_get_by_name("battery");*/
@@ -1509,7 +1324,6 @@ void oppo_vooc_init(struct oppo_vooc_chip *chip)
 	INIT_DELAYED_WORK(&chip->fastchg_work, oppo_vooc_fastchg_func);
 	INIT_DELAYED_WORK(&chip->check_charger_out_work, check_charger_out_work_func);
 	INIT_WORK(&chip->vooc_watchdog_work, vooc_watchdog_work_func);
-	INIT_DELAYED_WORK(&chip->reset_vooc_start_temp_dwork, reset_vooc_start_temp_dwork_func);
 	g_vooc_chip = chip;
 	chip->vops->eint_regist(chip);
 	if(chip->vooc_fw_update_newmethod) {
@@ -1866,89 +1680,62 @@ int oppo_vooc_get_fast_chg_type(void)
 static int oplus_vooc_convert_fast_chg_type(int fast_chg_type)
 {
 	struct oppo_vooc_chip *chip = g_vooc_chip;
-	enum e_fastchg_power fastchg_pwr_type;
 
 	if (!chip)
 		return FASTCHG_CHARGER_TYPE_UNKOWN;
-	if (chip->support_vooc_by_normal_charger_path) {
-		fastchg_pwr_type = FASTCHG_POWER_10V6P5A_TWO_BAT_SVOOC;
-	} else {
-		fastchg_pwr_type = FASTCHG_POWER_UNKOWN;
-	}
 
 	switch(fast_chg_type) {
-	case FASTCHG_CHARGER_TYPE_UNKOWN:
-		return fast_chg_type;
-		break;
-
-	case 0x11:		/*50w*/
-	case 0x12:		/*50w*/
-	case 0x21:		/*50w*/
-	case 0x31:		/*50w*/
-	case 0x33:		/*50w*/
-	case 0x62:		/*reserve for svooc*/
-		if (fastchg_pwr_type == FASTCHG_POWER_11V3A_FLASHCHARGER
-				|| fastchg_pwr_type == FASTCHG_POWER_10V6P5A_TWO_BAT_SVOOC)
+		case FASTCHG_CHARGER_TYPE_UNKOWN:
 			return fast_chg_type;
-		return CHARGER_SUBTYPE_FASTCHG_VOOC;
-		break;
+			break;
 
-	case 0x14:		/*65w*/
-	case 0x32:		/*65W*/
-	case 0x35:		/*65w*/
-	case 0x36:		/*65w*/
-	case 0x63:		/*reserve for svooc 2.0*/
-	case 0x64:		/*reserve for svooc 2.0*/
-	case 0x65:		/*reserve for svooc 2.0*/
-	case 0x66:		/*reserve for svooc 2.0*/
-	case 0x69:		/*reserve for svooc 2.0*/
-	case 0x6A:		/*reserve for svooc 2.0*/
-	case 0x6B:		/*reserve for svooc 2.0*/
-	case 0x6C:		/*reserve for svooc 2.0*/
-	case 0x6D:		/*reserve for svooc 2.0*/
-	case 0x6E:		/*reserve for svooc 2.0*/
-		if (fastchg_pwr_type == FASTCHG_POWER_11V3A_FLASHCHARGER
-				|| fastchg_pwr_type == FASTCHG_POWER_10V6P5A_TWO_BAT_SVOOC)
+		case 0x11:		/*50w*/
+		case 0x12:		/*50w*/
+		case 0x21:		/*50w*/
+		case 0x31:		/*50w*/
+		case 0x33:		/*50w*/
+		case 0x61:		/*reserve for svooc*/
+		case 0x62:		/*reserve for svooc*/
+			if (chip->support_vooc_by_normal_charger_path)
+				return fast_chg_type;
+			return CHARGER_SUBTYPE_FASTCHG_VOOC;
+			break;
+
+		case 0x14:		/*65w*/
+		case 0x32:		/*65W*/
+		case 0x35:		/*65w*/
+		case 0x36:		/*65w*/
+		case 0x63:		/*reserve for svooc 2.0*/
+		case 0x64:		/*reserve for svooc 2.0*/
+		case 0x65:		/*reserve for svooc 2.0*/
+		case 0x66:		/*reserve for svooc 2.0*/
+		case 0x69:		/*reserve for svooc 2.0*/
+		case 0x6A:		/*reserve for svooc 2.0*/
+		case 0x6B:		/*reserve for svooc 2.0*/
+		case 0x6C:		/*reserve for svooc 2.0*/
+		case 0x6D:		/*reserve for svooc 2.0*/
+		case 0x6E:		/*reserve for svooc 2.0*/
+			if (chip->support_vooc_by_normal_charger_path)
+				return fast_chg_type;
+			return CHARGER_SUBTYPE_FASTCHG_VOOC;
+			break;
+
+		case 0x0F:		/*special code*/
+		case 0x1F:		/*special code*/
+		case 0x3F:		/*special code*/
+		case 0x7F:		/*special code*/
 			return fast_chg_type;
-		return CHARGER_SUBTYPE_FASTCHG_VOOC;
-		break;
+			break;
 
-	case 0x0F:		/*special code*/
-	case 0x1F:		/*special code*/
-	case 0x3F:		/*special code*/
-	case 0x7F:		/*special code*/
-		return fast_chg_type;
-		break;
+		case 0x34:
+			if (chip->support_vooc_by_normal_charger_path)
+				return fast_chg_type;
+			return CHARGER_SUBTYPE_FASTCHG_VOOC;
+			break;
 
-	case 0x34:
-		if (fastchg_pwr_type == FASTCHG_POWER_10V6P5A_TWO_BAT_SVOOC)
-			return fast_chg_type;
-		return CHARGER_SUBTYPE_FASTCHG_VOOC;
-	case 0x13:
-	case 0x19:
-	case 0x29:
-	case 0x41:
-	case 0x42:
-	case 0x43:
-	case 0x44:
-	case 0x45:
-	case 0x46:
-		return CHARGER_SUBTYPE_FASTCHG_VOOC;
-	case 0x61:		/* 11V3A*/
-	case 0x49:		/*for 11V3A adapter temp*/
-	case 0x4A:		/*for 11V3A adapter temp*/
-	case 0x4B:		/*for 11V3A adapter temp*/
-	case 0x4C:		/*for 11V3A adapter temp*/
-	case 0x4D:		/*for 11V3A adapter temp*/
-	case 0x4E:		/*for 11V3A adapter temp*/
-		fast_chg_type = 0x61;
-		if (fastchg_pwr_type == FASTCHG_POWER_11V3A_FLASHCHARGER
-				|| fastchg_pwr_type == FASTCHG_POWER_10V6P5A_TWO_BAT_SVOOC)
-			return fast_chg_type;
-		return CHARGER_SUBTYPE_FASTCHG_VOOC;
-
-	default:
-		return CHARGER_SUBTYPE_FASTCHG_SVOOC;
+		default:
+			return CHARGER_SUBTYPE_FASTCHG_VOOC;
+			break;
 	}
 
 	return FASTCHG_CHARGER_TYPE_UNKOWN;
@@ -1985,17 +1772,6 @@ void oppo_vooc_set_vooc_chargerid_switch_val(int value)
 		chip->vops->set_vooc_chargerid_switch_val(chip, value);
 	}
 }
-
-int oplus_vooc_get_reply_bits(void)
-{
-	struct oppo_vooc_chip *chip = g_vooc_chip;
-
-	if (!chip) {
-		return 0;
-	} else {
-		return chip->vooc_reply_mcu_bits;
-	}
-}
 	/* Zhangkun@BSP.CHG.Basic, 2020/08/17, Add for svooc detect and detach */
 bool oppo_vooc_get_detach_unexpectly(void)
 {
@@ -2026,22 +1802,3 @@ void oppo_vooc_set_disable_real_fast_chg(bool val)
 		chg_err("disable_real_fast_chg = %d\n",g_vooc_chip->disable_real_fast_chg);
 	}
 }
-
-void oplus_vooc_get_vooc_chip_handle(struct oppo_vooc_chip **chip) {
-	*chip = g_vooc_chip;
-}
-
-void oplus_vooc_reset_temp_range(struct oppo_vooc_chip *chip)
-{
-	vooc_xlog_printk(CHG_LOG_CRTI, "reset temp range\n");
-	if (chip != NULL) {
-		chip->temp_range_init = false;
-		chip->w_soc_temp_to_mcu = false;
-		chip->vooc_little_cold_temp = chip->vooc_little_cold_temp_default;
-		chip->vooc_cool_temp = chip->vooc_cool_temp_default;
-		chip->vooc_little_cool_temp = chip->vooc_little_cool_temp_default;
-		chip->vooc_normal_low_temp = chip->vooc_normal_low_temp_default;
-		chip->fastchg_batt_temp_status = BAT_TEMP_NATURAL;
-	}
-}
-

@@ -64,12 +64,7 @@ ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 endif
 obj-$(CONFIG_QCOM_EUD) += eud.o
 obj-$(CONFIG_SOC_BUS) += socinfo.o
-#ifndef VENDOR_EDIT
-#Fuchun.Liao@BSP.CHG.Basic 2019/09/23 modify for oppo watchdog
-#obj-$(CONFIG_QCOM_WATCHDOG_V2) += watchdog_v2.o
-#else
-obj-$(CONFIG_QCOM_WATCHDOG_V2) += watchdog_v2.o oppo_watchdog_util.o
-#endif /* VENDOR_EDIT */
+obj-$(CONFIG_QCOM_WATCHDOG_V2) += watchdog_v2.o
 obj-$(CONFIG_QCOM_SDM845_LLCC) += llcc-sdm845.o
 CFLAGS_rpmh-rsc.o := -I$(src)
 obj-$(CONFIG_QCOM_BUS_SCALING) += msm_bus/
@@ -91,10 +86,6 @@ ifdef CONFIG_QCOM_RPMH
 else
        obj-$(CONFIG_QTI_RPM_STATS_LOG) += rpm_master_stat.o
 endif
-#ifdef OPLUS_FEATURE_POWERINFO_RPMH
-#yunqing.zeng@bsp.power.basic 2019/11/30 modify for support buffer of modem subsystem sleep info
-obj-$(CONFIG_RPMH_MODEM_SLEEPINFO_BUFFER) += rpmh_modem_sleepinfo.o
-#endif /* OPLUS_FEATURE_POWERINFO_RPMH */
 obj-$(CONFIG_QTI_RPM_STATS_LOG) += rpm_stats.o
 obj-$(CONFIG_QCOM_MEM_OFFLINE) += mem-offline.o
 obj-$(CONFIG_QTI_DDR_STATS_LOG) += ddr_stats.o

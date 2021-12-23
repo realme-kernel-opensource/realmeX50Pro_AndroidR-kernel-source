@@ -15,7 +15,6 @@
 #include <linux/cpumask.h>
 
 #include "internals.h"
-#include "soc/oppo/oppo_project.h"
 
 /* For !GENERIC_IRQ_EFFECTIVE_AFF_MASK this looks at general affinity mask */
 static inline bool irq_needs_fixup(struct irq_data *d)
@@ -200,12 +199,7 @@ void irq_migrate_all_off_this_cpu(void)
 		affinity_broken = migrate_one_irq(desc);
 		raw_spin_unlock(&desc->lock);
 
-#ifdef VENDOR_EDIT
-/*xing.xiong@BSP.Kernel.Driver, 2019/11/02, Modify for user and aging debug*/
-		if (affinity_broken && (get_eng_version() == AGING || oppo_daily_build())) {
-#else
 		if (affinity_broken) {
-#endif
 			pr_info_ratelimited("IRQ %u: no longer affine to CPU%u\n",
 					    irq, smp_processor_id());
 		}

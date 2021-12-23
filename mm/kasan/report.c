@@ -94,10 +94,6 @@ static void end_report(unsigned long *flags)
 	if (panic_on_warn)
 		panic("panic_on_warn set ...\n");
 	kasan_enable_current();
-#ifdef VENDOR_EDIT
-//* wen.luo@PSW.BSP.kernel, 2019/7/04,  trigger KE to get the KAsan double free message
-	BUG();
-#endif
 }
 
 static void print_track(struct kasan_track *track, const char *prefix)

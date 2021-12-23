@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #ifndef _CAM_HW_MGR_INTF_H_
@@ -99,8 +99,11 @@ struct cam_hw_done_event_data {
  * @context_data:          Context data pointer for the callback function
  * @event_cb:              Callback function array
  * @num_acq:               Total number of acquire in the payload
+ * @session_hdl:           Session Handle
  * @acquire_info:          Acquired resource array pointer
  * @ctxt_to_hw_map:        HW context (returned)
+ * @custom_enabled:        ctx has custom enabled
+ * @use_frame_header_ts:   Use frame header for qtimer ts
  * @acquired_hw_id:        Acquired hardware mask
  * @acquired_hw_path:      Acquired path mask for an input
  *                         if input splits into multiple paths,
@@ -112,9 +115,12 @@ struct cam_hw_acquire_args {
 	void                        *context_data;
 	cam_hw_event_cb_func         event_cb;
 	uint32_t                     num_acq;
+	uint32_t                     session_hdl;
 	uint32_t                     acquire_info_size;
 	uintptr_t                    acquire_info;
 	void                        *ctxt_to_hw_map;
+	bool                         custom_enabled;
+	bool                         use_frame_header_ts;
 
 	uint32_t    acquired_hw_id[CAM_MAX_ACQ_RES];
 	uint32_t    acquired_hw_path[CAM_MAX_ACQ_RES][CAM_MAX_HW_SPLIT];
@@ -269,10 +275,7 @@ struct cam_hw_flush_args {
 	uint32_t                        num_req_active;
 	void                           *flush_req_active[20];
 	enum flush_type_t               flush_type;
-#ifdef VENDOR_EDIT
-	//wangyongwu@Cam.Drv qualcomm patch smmu 0x2000 dump
 	uint32_t                        last_flush_req;
-#endif
 };
 
 /**
@@ -302,7 +305,24 @@ struct cam_hw_dump_pf_args {
 struct cam_hw_reset_args {
 	void                           *ctxt_to_hw_map;
 };
-
+#ifndef VENDOR_EDIT
+/**
+ * struct cam_hw_dump_args - Dump arguments
+ *
+ * @request_id:            request_id
+ * @offset:                Buffer offset. This is updated by the drivers.
+ * @buf_handle:            Buffer handle
+ * @error_type:            Error type, to be used to extend dump information
+ * @ctxt_to_hw_map:        HW context from the acquire
+ */
+struct cam_hw_dump_args {
+	uint64_t          request_id;
+	size_t            offset;
+	uint32_t          buf_handle;
+	uint32_t          error_type;
+	void             *ctxt_to_hw_map;
+};
+#endif
 /* enum cam_hw_mgr_command - Hardware manager command type */
 enum cam_hw_mgr_command {
 	CAM_HW_MGR_CMD_INTERNAL,
@@ -358,6 +378,7 @@ struct cam_hw_cmd_args {
  * @hw_close:                  Function pointer for HW deinit
  * @hw_flush:                  Function pointer for HW flush
  * @hw_reset:                  Function pointer for HW reset
+ * @hw_dump:                   Function pointer for HW dump
  *
  */
 struct cam_hw_mgr_intf {
@@ -379,6 +400,9 @@ struct cam_hw_mgr_intf {
 	int (*hw_close)(void *hw_priv, void *hw_close_args);
 	int (*hw_flush)(void *hw_priv, void *hw_flush_args);
 	int (*hw_reset)(void *hw_priv, void *hw_reset_args);
+#ifndef VENDOR_EDIT
+	int (*hw_dump)(void *hw_priv, void *hw_dump_args);
+#endif
 };
 
 #endif /* _CAM_HW_MGR_INTF_H_ */

@@ -42,17 +42,7 @@
 
 #include <linux/syscore_ops.h>
 
-#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
-//SunFaliang@BSP.Power.Basic, 2020/05/01, add for wakelock profiler
-#include <soc/oplus/oppo_wakelock_profiler.h>
-#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
-
 #include "irq-gic-common.h"
-
-//#ifdef OPLUS_FEATURE_NWPOWER
-//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-#include <net/oppo_nwpower.h>
-//#endif /* OPLUS_FEATURE_NWPOWER */
 
 struct redist_region {
 	void __iomem		*redist_base;
@@ -363,11 +353,6 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 	if (!msm_show_resume_irq_mask)
 		return;
 
-	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
-	//SunFaliang@BSP.Power.Basic, 2020/05/01, add for wakeup statics.
-	wakeup_reasons_statics(IRQ_NAME_WAKE_SUM, WS_CNT_SUM);
-	#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
-
 	for (i = 0; i * 32 < gic->irq_nr; i++) {
 		enabled = readl_relaxed(base + GICD_ICENABLER + i * 4);
 		pending[i] = readl_relaxed(base + GICD_ISPENDR + i * 4);
@@ -385,35 +370,8 @@ static void gic_show_resume_irq(struct gic_chip_data *gic)
 			name = "stray irq";
 		else if (desc->action && desc->action->name)
 			name = desc->action->name;
+
 		pr_warn("%s: %d triggered %s\n", __func__, irq, name);
-
-		//#ifdef OPLUS_FEATURE_NWPOWER
-		//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-		if (irq >= 211 && irq <= 242) {//pcie2
-			oppo_match_modem_wakeup();
-		} else if (irq >= 142 && irq <= 173) {//pcie0
-			oppo_match_wlan_wakeup();
-		}
-		//#endif /* OPLUS_FEATURE_NWPOWER */
-
-		#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
-		//SunFaliang@BSP.Power.Basic, 2020/05/01, add for wakeup statics.
-		do {
-			int platform_id = get_cached_platform_id();
-			if (platform_id == KONA) {
-				if (irq >= 211 && irq <= 242) { /*pcie2 is modem*/
-					name = IRQ_NAME_MODEM_QMI;
-				} else if (irq >= 142 && irq <= 173) {/*pcie0 is wlan*/
-					name = IRQ_NAME_WLAN_IPCC_DATA;
-				}
-			} else if (platform_id == LITO) {
-				if (!strcmp(name, IRQ_NAME_MODEM_MODEM)) {
-					name = IRQ_NAME_MODEM_QMI;
-				}
-			}
-			wakeup_reasons_statics(name, WS_CNT_MODEM|WS_CNT_WLAN|WS_CNT_ADSP|WS_CNT_CDSP|WS_CNT_SLPI);
-		} while(0);
-		#endif /* OPLUS_FEATURE_POWERINFO_STANDBY */
 	}
 }
 

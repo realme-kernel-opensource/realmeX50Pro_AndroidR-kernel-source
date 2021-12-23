@@ -274,10 +274,6 @@ int kgsl_add_event(struct kgsl_device *device, struct kgsl_event_group *group,
 	event->group = group;
 
 	INIT_WORK(&event->work, _kgsl_event_worker);
-#ifdef OPLUS_FEATURE_UIFIRST
-// caichen@TECH.Kernel.Sched, 2020/05/28, add for uifirst wq
-	set_uxwork(&event->work);
-#endif
 
 	trace_kgsl_register_event(KGSL_CONTEXT_ID(context), timestamp, func);
 

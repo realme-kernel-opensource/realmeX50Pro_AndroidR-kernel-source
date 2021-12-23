@@ -486,8 +486,28 @@ struct sock *inet_csk_accept(struct sock *sk, int flags, int *err, bool kern)
 		}
 		spin_unlock_bh(&queue->fastopenq.lock);
 	}
+
 out:
 	release_sock(sk);
+	if (newsk && mem_cgroup_sockets_enabled) {
+		int amt;
+
+		/* atomically get the memory usage, set and charge the
+		 * newsk->sk_memcg.
+		 */
+		lock_sock(newsk);
+
+		/* The socket has not been accepted yet, no need to look at
+		 * newsk->sk_wmem_queued.
+		 */
+		amt = sk_mem_pages(newsk->sk_forward_alloc +
+				   atomic_read(&newsk->sk_rmem_alloc));
+		mem_cgroup_sk_alloc(newsk);
+		if (newsk->sk_memcg && amt)
+			mem_cgroup_charge_skmem(newsk->sk_memcg, amt);
+
+		release_sock(newsk);
+	}
 	if (req)
 		reqsk_put(req);
 	return newsk;
@@ -1097,15 +1117,6 @@ struct dst_entry *inet_csk_update_pmtu(struct sock *sk, u32 mtu)
 			goto out;
 	}
 	dst->ops->update_pmtu(dst, sk, NULL, mtu, true);
-	#ifdef OPLUS_FEATURE_WIFI_MTUDETECT
-	//TangRongzheng@CONNECTIVITY.WIFI.NETWORK.1066205, 2016/11/03.
-	//Add for [1066205] when receives ICMP_FRAG_NEEDED, reduces the mtu of net_device.
-	pr_err("%s: current_mtu = %d , frag_mtu = %d mtu = %d\n", __func__, dst->dev->mtu, dst_mtu(dst),mtu);
-	//do not use dst_mtu here, because dst_mtu should be changed by update_pmtu after inet_csk_rebuild_route
-	if (dst->dev->mtu > mtu && mtu > IPV6_MIN_MTU) {
-		dst->dev->mtu = mtu;
-	}
-	#endif /* OPLUS_FEATURE_WIFI_MTUDETECT */
 
 	dst = __sk_dst_check(sk, 0);
 	if (!dst)

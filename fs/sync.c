@@ -17,19 +17,6 @@
 #include <linux/quotaops.h>
 #include <linux/backing-dev.h>
 #include "internal.h"
-#ifdef OPLUS_FEATURE_HEALTHINFO
-// wenbin.liu@PSW.BSP.MM, 2018/05/02
-// Add for get cpu load
-#ifdef CONFIG_OPPO_HEALTHINFO
-#include <soc/oplus/oppo_healthinfo.h>
-#endif
-#endif /* OPLUS_FEATURE_HEALTHINFO */
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-#include <linux/oppo_iomonitor/iomonitor.h>
-#include <linux/oppo_iomonitor/iotrace.h>
-DEFINE_TRACE(syscall_sync_timeout);
-#endif
 
 #define VALID_FLAGS (SYNC_FILE_RANGE_WAIT_BEFORE|SYNC_FILE_RANGE_WRITE| \
 			SYNC_FILE_RANGE_WAIT_AFTER)
@@ -229,30 +216,12 @@ static int do_fsync(unsigned int fd, int datasync)
 {
 	struct fd f = fdget(fd);
 	int ret = -EBADF;
-#ifdef OPLUS_FEATURE_HEALTHINFO
-// wenbin.liu@PSW.BSP.MM, 2018/08/06
-// Add for record  fsync  time
-#ifdef CONFIG_OPPO_HEALTHINFO
-    unsigned long oppo_fsync_time = jiffies;
-#endif
-#endif /* OPLUS_FEATURE_HEALTHINFO */
+
 	if (f.file) {
 		ret = vfs_fsync(f.file, datasync);
 		fdput(f);
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR) && defined(CONFIG_OPPO_HEALTHINFO)
-		/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-		iomonitor_update_fs_stats(FS_FSYNC, 1);
-		trace_syscall_sync_timeout(f.file, jiffies_to_msecs(jiffies - oppo_fsync_time));
-#endif
 		inc_syscfs(current);
 	}
-#ifdef OPLUS_FEATURE_HEALTHINFO
-// wenbin.liu@PSW.BSP.MM, 2018/08/06
-// Add for record  fsync  time
-#ifdef CONFIG_OPPO_HEALTHINFO
-	ohm_schedstats_record(OHM_SCHED_FSYNC, current, jiffies_to_msecs(jiffies - oppo_fsync_time));
-#endif
-#endif /* OPLUS_FEATURE_HEALTHINFO */
 	return ret;
 }
 

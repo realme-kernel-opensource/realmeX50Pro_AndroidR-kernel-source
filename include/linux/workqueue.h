@@ -18,11 +18,6 @@
 struct workqueue_struct;
 
 struct work_struct;
-#ifdef OPLUS_FEATURE_UIFIRST
-// caichen@TECH.Kernel.Sched, 2020/06/25, add for uifirst
-#include <linux/oppo_uifirst_decouple/oppo_cfs_workqueue.h>
-#endif
-
 typedef void (*work_func_t)(struct work_struct *work);
 void delayed_work_timer_fn(struct timer_list *t);
 
@@ -110,10 +105,6 @@ struct work_struct {
 	work_func_t func;
 #ifdef CONFIG_LOCKDEP
 	struct lockdep_map lockdep_map;
-#endif
-#ifdef OPLUS_FEATURE_UIFIRST
-// caichen@TECH.Kernel.Sched, 2020/05/28, add for uifirst wq
-	int ux_work;
 #endif
 };
 
@@ -221,12 +212,7 @@ static inline unsigned int work_static(struct work_struct *work)
 	return *work_data_bits(work) & WORK_STRUCT_STATIC;
 }
 #else
-static inline void __init_work(struct work_struct *work, int onstack) {
-#ifdef OPLUS_FEATURE_UIFIRST
-// caichen@TECH.Kernel.Sched, 2020/05/28, add for  uifirst wq
-	work->ux_work = 0;
-#endif
-}
+static inline void __init_work(struct work_struct *work, int onstack) { }
 static inline void destroy_work_on_stack(struct work_struct *work) { }
 static inline void destroy_delayed_work_on_stack(struct delayed_work *work) { }
 static inline unsigned int work_static(struct work_struct *work) { return 0; }

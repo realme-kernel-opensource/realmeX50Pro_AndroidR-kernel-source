@@ -94,11 +94,6 @@ struct kgsl_mmu_pt_ops {
 		uint64_t end, uint64_t size, uint64_t align);
 	int (*set_svm_region)(struct kgsl_pagetable *pt,
 				uint64_t gpuaddr, uint64_t size);
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-//Peifeng.Li@PSW.Kernel.BSP.Memory, 2020/04/22,virtual reserve memory
-	uint64_t (*find_svm_region_legacy)(struct kgsl_pagetable *, uint64_t, uint64_t,
-		uint64_t, uint64_t);
-#endif
 	int (*svm_range)(struct kgsl_pagetable *pt, uint64_t *lo, uint64_t *hi,
 			uint64_t memflags);
 	bool (*addr_in_range)(struct kgsl_pagetable *pagetable,

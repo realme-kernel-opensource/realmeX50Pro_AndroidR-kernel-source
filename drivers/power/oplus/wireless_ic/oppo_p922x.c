@@ -43,8 +43,8 @@
 #include <linux/iio/consumer.h>
 #include <uapi/linux/qg.h>
 
-#include <soc/oppo/device_info.h>
-#include <soc/oppo/oppo_project.h>
+#include <soc/oplus/device_info.h>
+#include <soc/oplus/oppo_project.h>
 
 #include "../oppo_vooc.h"
 #include "../oppo_gauge.h"
@@ -53,7 +53,7 @@
 #include "oppo_chargepump.h"
 #include <oppo_p922x.h>
 #include <oppo_p922x_fw.h>
-#include <soc/oppo/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 
 #define DEBUG_BY_FILE_OPS
 #define DEBUG_FASTCHG_BY_ADB
@@ -63,17 +63,9 @@
 #define USE_CHARGEPUMP_SWITCH
 #endif
 
-#define SLEEP_MODE_UNKOWN	-1
-#define FASTCHG_MODE		0
-#define SILENT_MODE			1
-#define BATTERY_FULL_MODE	2
-#define CALL_MODE			598
-#define EXIT_CALL_MODE		599
-
 unsigned long records_seconds = 0;
 int stop_timer = 0;
 bool test_is_charging = false;
-static bool charger_suspend = false;
 
 struct oppo_p922x_ic *p922x_chip = NULL;
 
@@ -341,66 +333,34 @@ static void p922x_set_FOD_parameter(struct oppo_p922x_ic *chip, char parameter)
 
 	if (parameter == 17) {
 		chg_err("<~WPC~>set FOD parameter BPP17\n");
-		if (chip->p922x_chg_status.dock_version == 0x02) {
-			p922x_config_interface(chip, 0x0068, 0x80, 0xFF);
-			p922x_config_interface(chip, 0x0069, 0x9A, 0xFF);
-			p922x_config_interface(chip, 0x006A, 0xC8, 0xFF);
-			p922x_config_interface(chip, 0x006B, 0x81, 0xFF);
-			p922x_config_interface(chip, 0x006C, 0x88, 0xFF);
-			p922x_config_interface(chip, 0x006D, 0x2D, 0xFF);
-			p922x_config_interface(chip, 0x006E, 0x7E, 0xFF);
-			p922x_config_interface(chip, 0x006F, 0x7F, 0xFF);
-			p922x_config_interface(chip, 0x0070, 0x90, 0xFF);
-			p922x_config_interface(chip, 0x0071, 0xF8, 0xFF);
-			p922x_config_interface(chip, 0x0072, 0x9F, 0xFF);
-			p922x_config_interface(chip, 0x0073, 0x81, 0xFF);
-		}
-		else {
-			p922x_config_interface(chip, 0x0068, 0xBE, 0xFF);
-			p922x_config_interface(chip, 0x0069, 0x78, 0xFF);
-			p922x_config_interface(chip, 0x006A, 0x9C, 0xFF);
-			p922x_config_interface(chip, 0x006B, 0x78, 0xFF);
-			p922x_config_interface(chip, 0x006C, 0x96, 0xFF);
-			p922x_config_interface(chip, 0x006D, 0x2D, 0xFF);
-			p922x_config_interface(chip, 0x006E, 0x93, 0xFF);
-			p922x_config_interface(chip, 0x006F, 0x22, 0xFF);
-			p922x_config_interface(chip, 0x0070, 0x90, 0xFF);
-			p922x_config_interface(chip, 0x0071, 0x0E, 0xFF);
-			p922x_config_interface(chip, 0x0072, 0x98, 0xFF);
-			p922x_config_interface(chip, 0x0073, 0xE2, 0xFF);
-		}
+		p922x_config_interface(chip, 0x0068, 0xBE, 0xFF);
+		p922x_config_interface(chip, 0x0069, 0x78, 0xFF);
+		p922x_config_interface(chip, 0x006A, 0x9C, 0xFF);
+		p922x_config_interface(chip, 0x006B, 0x78, 0xFF);
+		p922x_config_interface(chip, 0x006C, 0x96, 0xFF);
+		p922x_config_interface(chip, 0x006D, 0x2D, 0xFF);
+		p922x_config_interface(chip, 0x006E, 0x93, 0xFF);
+		p922x_config_interface(chip, 0x006F, 0x22, 0xFF);
+		p922x_config_interface(chip, 0x0070, 0x90, 0xFF);
+		p922x_config_interface(chip, 0x0071, 0x0E, 0xFF);
+		p922x_config_interface(chip, 0x0072, 0x98, 0xFF);
+		p922x_config_interface(chip, 0x0073, 0xE2, 0xFF);
 
 		chip->p922x_chg_status.FOD_parameter = parameter;
 	} else if (parameter == 12) {
 		chg_err("<~WPC~>set FOD parameter BPP12\n");
-		if (chip->p922x_chg_status.dock_version == 0x02) {
-			p922x_config_interface(chip, 0x0068, 0x3C, 0xFF);
-			p922x_config_interface(chip, 0x0069, 0x92, 0xFF);
-			p922x_config_interface(chip, 0x006A, 0x75, 0xFF);
-			p922x_config_interface(chip, 0x006B, 0x7F, 0xFF);
-			p922x_config_interface(chip, 0x006C, 0x96, 0xFF);
-			p922x_config_interface(chip, 0x006D, 0xBF, 0xFF);
-			p922x_config_interface(chip, 0x006E, 0x93, 0xFF);
-			p922x_config_interface(chip, 0x006F, 0xBA, 0xFF);
-			p922x_config_interface(chip, 0x0070, 0x82, 0xFF);
-			p922x_config_interface(chip, 0x0071, 0x4C, 0xFF);
-			p922x_config_interface(chip, 0x0072, 0x8A, 0xFF);
-			p922x_config_interface(chip, 0x0073, 0x7F, 0xFF);
-		}
-		else {
-			p922x_config_interface(chip, 0x0068, 0xC8, 0xFF);
-			p922x_config_interface(chip, 0x0069, 0x6E, 0xFF);
-			p922x_config_interface(chip, 0x006A, 0xAA, 0xFF);
-			p922x_config_interface(chip, 0x006B, 0x64, 0xFF);
-			p922x_config_interface(chip, 0x006C, 0xA0, 0xFF);
-			p922x_config_interface(chip, 0x006D, 0x2D, 0xFF);
-			p922x_config_interface(chip, 0x006E, 0x93, 0xFF);
-			p922x_config_interface(chip, 0x006F, 0x0E, 0xFF);
-			p922x_config_interface(chip, 0x0070, 0x93, 0xFF);
-			p922x_config_interface(chip, 0x0071, 0x0E, 0xFF);
-			p922x_config_interface(chip, 0x0072, 0x93, 0xFF);
-			p922x_config_interface(chip, 0x0073, 0x17, 0xFF);
-		}
+		p922x_config_interface(chip, 0x0068, 0xC8, 0xFF);
+		p922x_config_interface(chip, 0x0069, 0x6E, 0xFF);
+		p922x_config_interface(chip, 0x006A, 0xAA, 0xFF);
+		p922x_config_interface(chip, 0x006B, 0x64, 0xFF);
+		p922x_config_interface(chip, 0x006C, 0xA0, 0xFF);
+		p922x_config_interface(chip, 0x006D, 0x2D, 0xFF);
+		p922x_config_interface(chip, 0x006E, 0x93, 0xFF);
+		p922x_config_interface(chip, 0x006F, 0x0E, 0xFF);
+		p922x_config_interface(chip, 0x0070, 0x93, 0xFF);
+		p922x_config_interface(chip, 0x0071, 0x0E, 0xFF);
+		p922x_config_interface(chip, 0x0072, 0x93, 0xFF);
+		p922x_config_interface(chip, 0x0073, 0x17, 0xFF);
 
 		chip->p922x_chg_status.FOD_parameter = parameter;
 	} else if (parameter == 10) {
@@ -464,12 +424,7 @@ static int p922x_set_tx_Q_value(struct oppo_p922x_ic *chip)
 	p922x_config_interface(chip, 0x0050, 0x38, 0xFF);
 	p922x_config_interface(chip, 0x0051, 0x48, 0xFF);
 	p922x_config_interface(chip, 0x0052, 0x00, 0xFF);
-	if (chip->p922x_chg_status.dock_version == 0x02) {
-		p922x_config_interface(chip, 0x0053, 0x56, 0xFF);
-	}
-	else {
-		p922x_config_interface(chip, 0x0053, 0x41, 0xFF);
-	}
+	p922x_config_interface(chip, 0x0053, 0x41, 0xFF);
 
 	p922x_config_interface(chip, 0x004E, 0x01, 0x01);//BIT0
 
@@ -506,30 +461,7 @@ static int p922x_set_tx_charger_fastcharge(struct oppo_p922x_ic *chip)
 	return 0;
 }
 
-static int p922x_config_fan_pwm_pulse_value(struct oppo_p922x_ic *chip)
-{
-	int dock_version = chip->p922x_chg_status.dock_version;
-
-	if (dock_version == DOCK_OAWV01) {
-		chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg = FAN_PWM_PULSE_IN_FASTCHG_MODE_V01;
-		chip->p922x_chg_status.dock_fan_pwm_pulse_silent = FAN_PWM_PULSE_IN_SILENT_MODE_V01;
-	} else if (dock_version == DOCK_OAWV02) {
-		chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg = FAN_PWM_PULSE_IN_FASTCHG_MODE_V02;
-		chip->p922x_chg_status.dock_fan_pwm_pulse_silent = FAN_PWM_PULSE_IN_SILENT_MODE_V02;
-	} else if (dock_version >= DOCK_OAWV03 && dock_version <= DOCK_OAWV07) {
-		chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg = FAN_PWM_PULSE_IN_FASTCHG_MODE_V03_07;
-		chip->p922x_chg_status.dock_fan_pwm_pulse_silent = FAN_PWM_PULSE_IN_SILENT_MODE_V03_07;
-	} else if (dock_version >= DOCK_OAWV08 && dock_version <= DOCK_OAWV15) {
-		chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg = FAN_PWM_PULSE_IN_FASTCHG_MODE_V08_15;
-		chip->p922x_chg_status.dock_fan_pwm_pulse_silent = FAN_PWM_PULSE_IN_SILENT_MODE_V08_15;
-	} else {
-		chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg = FAN_PWM_PULSE_IN_FASTCHG_MODE_DEFAULT;
-		chip->p922x_chg_status.dock_fan_pwm_pulse_silent = FAN_PWM_PULSE_IN_SILENT_MODE_DEFAULT;
-	}
-	return 0;
-}
-
-static int p922x_set_tx_fan_pwm_pulse(struct oppo_p922x_ic *chip)
+int p922x_set_tx_fan_pwm_pulse(struct oppo_p922x_ic *chip)
 {
 	int pwm_pulse;
 
@@ -757,13 +689,8 @@ static void p922x_reset_variables(struct oppo_p922x_ic *chip)
 	chip->p922x_chg_status.vout_debug_mode = false;
 	chip->p922x_chg_status.iout_debug_mode = false;
 #endif
-	chip->cep_timeout_ack = false;
-	chip->quiet_mode_ack = false;
-	chip->quiet_mode_need = SLEEP_MODE_UNKOWN;
-	chip->pre_quiet_mode_need = SLEEP_MODE_UNKOWN;
+
 	chip->p922x_chg_status.FOD_parameter = 0;
-	chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg = FAN_PWM_PULSE_IN_FASTCHG_MODE_DEFAULT;
-	chip->p922x_chg_status.dock_fan_pwm_pulse_silent = FAN_PWM_PULSE_IN_SILENT_MODE_DEFAULT;
 }
 
 static void p922x_init(struct oppo_p922x_ic *chip)
@@ -2997,9 +2924,6 @@ static int p922x_charge_status_process(struct oppo_p922x_ic *chip)
 		mp2650_enable_charging();
 		p922x_set_rx_charge_current(chip, 1200);
 		mp2650_input_current_limit_without_aicl(WPC_CHARGE_CURRENT_LIMIT_300MA);
-		mp2650_suspend_charger();
-		charger_suspend = true;
-		schedule_delayed_work(&chip->charger_suspend_work, round_jiffies_relative(msecs_to_jiffies(6000)));
 
 		p922x_set_rx_charge_voltage(chip, WPC_CHARGE_VOLTAGE_FASTCHG_INIT);
 		chip->p922x_chg_status.send_message = P9221_CMD_INTO_FASTCHAGE;
@@ -3015,16 +2939,6 @@ static int p922x_charge_status_process(struct oppo_p922x_ic *chip)
 
 	case WPC_CHG_STATUS_WAITING_FOR_TX_INTO_FASTCHG:
 		chg_err("<~WPC~> ..........WPC_CHG_STATUS_WAITING_FOR_TX_INTO_FASTCHG..........\n");
-		if (chip->p922x_chg_status.vout > 9000 && charger_suspend == true) {
-			mp2650_unsuspend_charger();
-			charger_suspend = false;
-			cancel_delayed_work_sync(&chip->charger_suspend_work);
-		}
-
-		if (charger_suspend) {
-			break;
-		}
-
 		if (chip->p922x_chg_status.charge_type == WPC_CHARGE_TYPE_FAST) {
 			if (p922x_get_CEP_flag(chip) != 0) {
 #ifndef FASTCHG_TEST_BY_TIME
@@ -3189,7 +3103,6 @@ static int p922x_charge_status_process(struct oppo_p922x_ic *chip)
 					chg_err("<~WPC~> 40times: chargepump is fastcharging!\n");
 					chargepump_enable_watchdog();
 					chip->p922x_chg_status.charge_status = WPC_CHG_STATUS_CHAREPUMP_FASTCHG_INIT;
-					chip->cep_timeout_ack = true;
 					break;
 				}
 			}
@@ -3840,22 +3753,14 @@ static void p922x_commu_data_process(struct oppo_p922x_ic *chip)
 				switch (tx_command) {
 				case P9237_RESPONE_ADAPTER_TYPE:
 					if ((tx_command == tx_command_r) && (tx_data == tx_data_r)) {
+						p922x_set_FOD_parameter(chip, 1);
 						
 						chip->p922x_chg_status.adapter_type = (tx_data & 0x07);
 						chip->p922x_chg_status.dock_version = (tx_data & 0xF8) >> 3;
-
-						chg_err("<~WPC~> get adapter type = 0x%02X, get dock hw version = 0x%02X\n",
-							chip->p922x_chg_status.adapter_type, chip->p922x_chg_status.dock_version);
-						p922x_config_fan_pwm_pulse_value(chip);
-						if (chip->p922x_chg_status.adapter_type == ADAPTER_TYPE_PD_65W)
-							chip->p922x_chg_status.adapter_type = ADAPTER_TYPE_SVOOC;
-
-						oppo_wpc_get_fastchg_allow(chip);
-						p922x_set_tx_Q_value(chip);
-						p922x_set_FOD_parameter(chip, 1);
-
 						if (chip->p922x_chg_status.adapter_type == ADAPTER_TYPE_SVOOC)
 							wpc_battery_update();
+						chg_err("<~WPC~> get adapter type = 0x%02X\n", chip->p922x_chg_status.adapter_type);
+						chg_err("<~WPC~> get dock hw version = 0x%02X\n", chip->p922x_chg_status.dock_version);
 					}
 					break;
 
@@ -3881,7 +3786,6 @@ static void p922x_commu_data_process(struct oppo_p922x_ic *chip)
 				case P9237_RESPONE_CEP_TIMEOUT:
 					if ((tx_command == tx_command_r) && (tx_data == tx_data_r)) {
 						chg_err("<~WPC~> P9237_RESPONE_CEP_TIMEOUT\n");
-						chip->cep_timeout_ack = true;
 						if (chip->p922x_chg_status.send_message == P9221_CMD_SET_CEP_TIMEOUT) {
 							chip->p922x_chg_status.send_message = P9221_CMD_NULL;
 						}
@@ -3891,7 +3795,6 @@ static void p922x_commu_data_process(struct oppo_p922x_ic *chip)
 				case P9237_RESPONE_PWM_PULSE:
 					if ((tx_command == tx_command_r) && (tx_data == tx_data_r)) {
 						chg_err("<~WPC~> P9237_RESPONE_PWM_PULSE\n");
-						chip->quiet_mode_ack = true;
 						if (chip->p922x_chg_status.send_message == P9221_CMD_SET_PWM_PULSE) {
 							chip->p922x_chg_status.send_message = P9221_CMD_NULL;
 						}
@@ -4058,9 +3961,7 @@ static void p922x_idt_connect_int_func(struct work_struct *work)
 
 			p922x_init(chip);
 
-                  	/*
 			p922x_set_tx_Q_value(chip);
-                        */
 			
 			p922x_charger_init(chip);
 
@@ -4104,11 +4005,6 @@ static void p922x_idt_connect_int_func(struct work_struct *work)
 			oppo_chg_cancel_update_work_sync();
 			cancel_delayed_work_sync(&chip->p922x_task_work);
 			cancel_delayed_work_sync(&chip->idt_event_int_work);
-			cancel_delayed_work_sync(&chip->charger_suspend_work);
-			if (charger_suspend) {
-				mp2650_unsuspend_charger();
-				charger_suspend = false;
-			}
 
 			chg_err("<~WPC~> exit wireless charge\n");
 			mp2650_set_vindpm_vol(4500);
@@ -4911,12 +4807,12 @@ static int p922x_set_silent_mode(bool is_silent)
 	}
 
 	if (is_silent) {
-		chg_err("<~WPC~> set fan pwm pulse: %d\n", chip->p922x_chg_status.dock_fan_pwm_pulse_silent);
-		p922x_set_dock_fan_pwm_pulse(chip->p922x_chg_status.dock_fan_pwm_pulse_silent);
+		chg_err("<~WPC~> set fan pwm pulse: %d\n", FAN_PWM_PULSE_IN_SILENT_MODE);
+		p922x_set_dock_fan_pwm_pulse(FAN_PWM_PULSE_IN_SILENT_MODE);
 		chip->p922x_chg_status.work_silent_mode = true;
 	} else {
-		chg_err("<~WPC~> set fan pwm pulse: %d\n", chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg);
-		p922x_set_dock_fan_pwm_pulse(chip->p922x_chg_status.dock_fan_pwm_pulse_fastchg);
+		chg_err("<~WPC~> set fan pwm pulse: %d\n", FAN_PWM_PULSE_IN_FASTCHG_MODE);
+		p922x_set_dock_fan_pwm_pulse(FAN_PWM_PULSE_IN_FASTCHG_MODE);
 		chip->p922x_chg_status.work_silent_mode = false;
 	}
 
@@ -5381,19 +5277,6 @@ static void p922x_test_work_process(struct work_struct *work)
 	}
 }
 #endif
-
-static void charger_suspend_work_process(struct work_struct *work)
-{
-	struct delayed_work *dwork = to_delayed_work(work);
-	struct oppo_p922x_ic *chip = container_of(dwork, struct oppo_p922x_ic, charger_suspend_work);
-
-	if (charger_suspend) {
-		charger_suspend = false;
-		mp2650_unsuspend_charger();
-		chg_err("<~WPC~> increase 12V timeout unsuspend,vrect=%d,iout=%d\n",
-				chip->p922x_chg_status.vrect, chip->p922x_chg_status.iout);
-	}
-}
 
 static void wlchg_reset_variables(struct oppo_p922x_ic *chip)
 {
@@ -6241,18 +6124,18 @@ static ssize_t proc_wireless_user_sleep_mode_read(struct file *file, char __user
 		return 0;
 	}
 
-	chg_err("quiet_mode_need[%d], ack[%d]\n", chip->quiet_mode_need, chip->quiet_mode_ack);
-	if (chip->quiet_mode_ack == true) {
-		sprintf(page, "%d", chip->quiet_mode_need);
-		chip->pre_quiet_mode_need  = chip->quiet_mode_need;
-	} else {
-		sprintf(page, "%d", chip->pre_quiet_mode_need);
-	}
+	chg_err("chip->quiet_mode_need = %d.\n", chip->quiet_mode_need);
+	sprintf(page, "%d", chip->quiet_mode_need);
 	ret = simple_read_from_buffer(buf, count, ppos, page, strlen(page));
 
 	return ret;
 }
 
+#define FASTCHG_MODE		0
+#define SILENT_MODE			1
+#define BATTERY_FULL_MODE	2
+#define CALL_MODE			598
+#define EXIT_CALL_MODE		599
 static ssize_t proc_wireless_user_sleep_mode_write(struct file *file, const char __user *buf,
 				      size_t len, loff_t *lo)
 {
@@ -6278,30 +6161,21 @@ static ssize_t proc_wireless_user_sleep_mode_write(struct file *file, const char
 
 	chg_err("user mode: buffer=%s\n", buffer);
 	kstrtoint(buffer, 0, &pmw_pulse);
-	if (chip->cep_timeout_ack == false)
-		return -EBUSY;
 	if (pmw_pulse == FASTCHG_MODE) {
 		rc = p922x_set_silent_mode(false);
-		if (rc == 0) {
-			chip->quiet_mode_ack = false;
+		if (rc == 0)
 			chip->quiet_mode_need = FASTCHG_MODE;
-		}
 		chg_err("<~WPC~> set user mode: %d, fastchg mode, rc: %d\n", pmw_pulse, rc);
 	} else if (pmw_pulse == SILENT_MODE) {
 		rc = p922x_set_silent_mode(true);
-		if (rc == 0) {
-			chip->quiet_mode_ack = false;
+		if (rc == 0)
 			chip->quiet_mode_need = SILENT_MODE;
-		}
 		chg_err("<~WPC~>set user mode: %d, silent mode, rc: %d\n", pmw_pulse, rc);
 		p922x_set_dock_led_pwm_pulse(3);
 	} else if (pmw_pulse == BATTERY_FULL_MODE) {
-		rc = p922x_set_dock_fan_pwm_pulse(chip->p922x_chg_status.dock_fan_pwm_pulse_silent);
-		if (rc == 0) {
-			chip->quiet_mode_ack = false;
-			chip->quiet_mode_need = BATTERY_FULL_MODE;
-		}
-		chg_err("<~WPC~> set user mode: %d, battery full mode, rc: %d\n", pmw_pulse, rc);
+		chg_err("<~WPC~> set user mode: %d, battery full mode\n", pmw_pulse);
+		chip->quiet_mode_need = BATTERY_FULL_MODE;
+		p922x_set_dock_fan_pwm_pulse(60);
 	} else if (pmw_pulse == CALL_MODE) {
 		chg_err("<~WPC~> set user mode: %d, call mode\n", pmw_pulse);
 		chip->p922x_chg_status.call_mode = true;
@@ -6868,7 +6742,6 @@ static int p922x_driver_probe(struct i2c_client *client, const struct i2c_device
 #ifdef FASTCHG_TEST_BY_TIME
 	INIT_DELAYED_WORK(&chip->p922x_test_work, p922x_test_work_process);
 #endif
-	INIT_DELAYED_WORK(&chip->charger_suspend_work, charger_suspend_work_process);
 
 	p922x_chip = chip;
 

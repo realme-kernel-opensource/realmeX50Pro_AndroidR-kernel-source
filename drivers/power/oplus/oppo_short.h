@@ -12,6 +12,8 @@
 #ifndef _OPPO_BATTERY_H_
 #define _OPPO_BATTERY_H_
 
+#include "oppo_charger.h"
+
 #define BAD_CONFIG_FILE		"/data/oppo/psw/bad_bat_config.ini"
 #define ERR_CODE_FILE		"/data/oppo/psw/bad_bat_err_code.ini"
 #define EXIT_CODE_FILE		"/data/oppo/psw/bad_bat_exit_code.ini"

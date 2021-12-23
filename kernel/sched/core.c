@@ -18,10 +18,6 @@
 #include <asm/tlb.h>
 
 #include <soc/qcom/minidump.h>
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_KSWAPD_UNBIND_MAX_CPU)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-22,add multi kswapd support*/
-#include <linux/oppo_multi_kswapd.h>
-#endif
 
 #include "../workqueue_internal.h"
 #include "../smpboot.h"
@@ -31,11 +27,6 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/sched.h>
-
-#ifdef OPLUS_FEATURE_UIFIRST
-// XieLiujie@BSP.KERNEL.PERFORMANCE, 2020/05/25, Add for UIFirst
-#include <linux/oppo_uifirst_decouple/oppo_cfs_common.h>
-#endif /* OPLUS_FEATURE_UIFIRST */
 
 DEFINE_PER_CPU_SHARED_ALIGNED(struct rq, runqueues);
 
@@ -1649,10 +1640,6 @@ void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
 	bool queued, running;
 
 	lockdep_assert_held(&p->pi_lock);
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_KSWAPD_UNBIND_MAX_CPU)
-	if (kswapd_affinity_check(p, new_mask))
-		return;
-#endif
 
 	queued = task_on_rq_queued(p);
 	running = task_current(rq, p);
@@ -2105,6 +2092,8 @@ static int select_fallback_rq(int cpu, struct task_struct *p, bool allow_iso)
 	enum { cpuset, possible, fail, bug } state = cpuset;
 	int dest_cpu;
 	int isolated_candidate = -1;
+	int backup_cpu = -1;
+	unsigned int max_nr = UINT_MAX;
 
 	/*
 	 * If the node that the CPU is on has been offlined, cpu_to_node()
@@ -2120,9 +2109,18 @@ static int select_fallback_rq(int cpu, struct task_struct *p, bool allow_iso)
 				continue;
 			if (cpu_isolated(dest_cpu))
 				continue;
-			if (cpumask_test_cpu(dest_cpu, &p->cpus_allowed))
-				return dest_cpu;
+			if (cpumask_test_cpu(dest_cpu, &p->cpus_allowed)) {
+				if (cpu_rq(dest_cpu)->nr_running < 32)
+					return dest_cpu;
+				if (cpu_rq(dest_cpu)->nr_running > max_nr)
+					continue;
+				backup_cpu = dest_cpu;
+				max_nr = cpu_rq(dest_cpu)->nr_running;
+			}
 		}
+
+		if (backup_cpu != -1)
+			return backup_cpu;
 	}
 
 	for (;;) {
@@ -3772,49 +3770,7 @@ unsigned long long task_sched_runtime(struct task_struct *p)
 }
 
 unsigned int capacity_margin_freq = 1280; /* ~20% margin */
-#ifdef OPLUS_FEATURE_UIFIRST
-// XuHaifeng@BSP.KERNEL.PERFORMANCE, 2020/08/18, Add for UIFirst(slide boost)
-extern int sysctl_frame_rate;
-extern unsigned int sched_ravg_window;
-extern bool ux_task_misfit(struct task_struct *p, int cpu);
-u64 ux_task_load[NR_CPUS] = {0};
-u64 ux_load_ts[NR_CPUS] = {0};
-static u64 calc_freq_ux_load(struct task_struct *p, u64 wallclock)
-{
-	unsigned int maxtime = 0, factor = 0;
-	unsigned int window_size = sched_ravg_window / NSEC_PER_MSEC;
-	u64 timeline = 0, freq_exec_load = 0, freq_ravg_load = 0;
-	u64 wakeclock = p->last_wake_ts;
 
-	if (wallclock < wakeclock)
-		return 0;
-
-	switch (sysctl_frame_rate) {
-		case 60:
-		case 90:
-			maxtime = 5;
-			break;
-		case 120:
-			maxtime = 4;
-			break;
-		default:
-			return 0;
-	}
-
-	timeline = wallclock - wakeclock;
-	factor = window_size / maxtime;
-	freq_exec_load = timeline * factor;
-
-	if (freq_exec_load > sched_ravg_window)
-		freq_exec_load = sched_ravg_window;
-
-	freq_ravg_load = (p->ravg.prev_window + p->ravg.curr_window) << 1;
-	if (freq_ravg_load > sched_ravg_window)
-		freq_ravg_load = sched_ravg_window;
-
-	return max(freq_exec_load, freq_ravg_load);
-}
-#endif
 /*
  * This function gets called by the timer code, with HZ frequency.
  * We call it with interrupts disabled.
@@ -3849,24 +3805,6 @@ void scheduler_tick(void)
 	if (early_notif)
 		flag = SCHED_CPUFREQ_WALT | SCHED_CPUFREQ_EARLY_DET;
 
-#ifdef OPLUS_FEATURE_UIFIRST
-	// XuHaifeng@BSP.KERNEL.PERFORMANCE, 2020/08/18, Add for UIFirst(slide boost)
-	if (sysctl_uifirst_enabled && (sysctl_slide_boost_enabled || sysctl_animation_type == LAUNCHER_SI_START)) {
-		if(rq->curr && (rq->curr->static_ux == 2 || rq->curr->sched_class == &rt_sched_class) && !ux_task_misfit(rq->curr, cpu)) {
-			ux_task_load[cpu] = calc_freq_ux_load(rq->curr, wallclock);
-			ux_load_ts[cpu] = wallclock;
-			flag |= (SCHED_CPUFREQ_WALT | SCHED_CPUFREQ_BOOST);
-		}
-		else if (ux_task_load[cpu] != 0) {
-			ux_task_load[cpu] = 0;
-			ux_load_ts[cpu] = wallclock;
-			flag |= (SCHED_CPUFREQ_WALT | SCHED_CPUFREQ_RESET);
-		}
-	} else {
-		ux_task_load[cpu] = 0;
-		ux_load_ts[cpu] = 0;
-	}
-#endif
 	cpufreq_update_util(rq, flag);
 	rq_unlock(rq, &rf);
 
@@ -4315,11 +4253,6 @@ static void __sched notrace __schedule(bool preempt)
 		}
 		switch_count = &prev->nvcsw;
 	}
-
-#ifdef OPLUS_FEATURE_UIFIRST
-// XieLiujie@BSP.KERNEL.PERFORMANCE, 2020/05/25, Add for UIFirst
-	prev->enqueue_time = rq->clock;
-#endif /* OPLUS_FEATURE_UIFIRST */
 
 	next = pick_next_task(rq, prev, &rf);
 	clear_tsk_need_resched(prev);
@@ -7176,10 +7109,6 @@ void __init sched_init_smp(void)
 	cpumask_copy(&current->cpus_requested, cpu_possible_mask);
 	sched_init_granularity();
 
-#ifdef OPLUS_FEATURE_UIFIRST
-// XieLiujie@BSP.KERNEL.PERFORMANCE, 2020/05/25, Add for UIFirst
-	ux_init_cpu_data();
-#endif /* OPLUS_FEATURE_UIFIRST */
 	init_sched_rt_class();
 	init_sched_dl_class();
 
@@ -7298,10 +7227,6 @@ void __init sched_init(void)
 		init_cfs_rq(&rq->cfs);
 		init_rt_rq(&rq->rt);
 		init_dl_rq(&rq->dl);
-#ifdef OPLUS_FEATURE_UIFIRST
-// XieLiujie@BSP.KERNEL.PERFORMANCE, 2020/05/25, Add for UIFirst
-		ux_init_rq_data(rq);
-#endif /* OPLUS_FEATURE_UIFIRST */
 #ifdef CONFIG_FAIR_GROUP_SCHED
 		root_task_group.shares = ROOT_TASK_GROUP_LOAD;
 		INIT_LIST_HEAD(&rq->leaf_cfs_rq_list);
@@ -8709,23 +8634,3 @@ void sched_exit(struct task_struct *p)
 #endif /* CONFIG_SCHED_WALT */
 
 __read_mostly bool sched_predl = 1;
-#ifdef VENDOR_EDIT
-/*fanhui@PhoneSW.BSP, 2016-06-23, get current task on one cpu*/
-struct task_struct *oppo_get_cpu_task(int cpu)
-{
-	return cpu_curr(cpu);
-}
-#endif
-
-#ifdef CONFIG_KSWAPD_UNBIND_MAX_CPU
-void upate_kswapd_unbind_cpu(void)
-{
-    struct root_domain *rd = NULL;
-
-    rcu_read_lock();
-    rd = cpu_rq(smp_processor_id())->rd;
-    if (rd->mid_cap_orig_cpu != -1 && rd->max_cap_orig_cpu != -1)
-        kswapd_unbind_cpu = rd->max_cap_orig_cpu;
-    rcu_read_unlock();
-}
-#endif

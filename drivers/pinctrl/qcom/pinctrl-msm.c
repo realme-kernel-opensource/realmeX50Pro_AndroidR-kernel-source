@@ -39,22 +39,10 @@
 #include "../pinconf.h"
 #include "pinctrl-msm.h"
 #include "../pinctrl-utils.h"
-#ifdef OPLUS_BUG_STABILITY
-#include <soc/oplus/system/oppo_project.h>
-#endif
 
 #define MAX_NR_GPIO 300
 #define PS_HOLD_OFFSET 0x820
 #define QUP_MASK       GENMASK(5, 0)
-
-#ifdef OPLUS_BUG_STABILITY
-static unsigned int project_number[] = {
-	19191, 19192, 19015, 19016,
-	19591, 19525, 19101, 19501,
-	19125, 19126, 19127, 19128,
-	19521, 19335
-};
-#endif
 
 /**
  * struct msm_pinctrl - state for a pinctrl-msm device
@@ -576,16 +564,16 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	u32 ctl_reg, io_reg;
 
 	static const char * const pulls_keeper[] = {
-		"no-pull",
-		"pull-down",
+		"no pull",
+		"pull down",
 		"keeper",
-		"pull-up"
+		"pull up"
 	};
 
 	static const char * const pulls_no_keeper[] = {
-		"no-pull",
-		"pull-down",
-		"pull-up",
+		"no pull",
+		"pull down",
+		"pull up",
 	};
 
 	if (!gpiochip_line_is_valid(chip, offset))
@@ -1622,22 +1610,6 @@ int msm_gpio_mpm_wake_set(unsigned int gpio, bool enable)
 }
 EXPORT_SYMBOL(msm_gpio_mpm_wake_set);
 
-#ifdef OPLUS_BUG_STABILITY
-static void msm_pinctrl_wakeup_set(void)
-{
-	int i;
-	unsigned int project = get_project();
-
-	for(i = 0; i< sizeof(project_number); i++){
-		if(project == project_number[i]){
-			pr_err("Disable GPIO105 wakeup\n");
-			msm_gpio_mpm_wake_set(105, false);
-			break;
-		}
-	}
-}
-#endif
-
 int msm_pinctrl_probe(struct platform_device *pdev,
 		      const struct msm_pinctrl_soc_data *soc_data)
 {
@@ -1704,9 +1676,6 @@ int msm_pinctrl_probe(struct platform_device *pdev,
 
 	register_syscore_ops(&msm_pinctrl_pm_ops);
 	dev_dbg(&pdev->dev, "Probed Qualcomm pinctrl driver\n");
-#ifdef OPLUS_BUG_STABILITY
-	msm_pinctrl_wakeup_set();
-#endif
 
 	return 0;
 }

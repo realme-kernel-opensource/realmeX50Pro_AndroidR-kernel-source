@@ -23,10 +23,7 @@
 #include <linux/hugetlb.h>
 #include <linux/memcontrol.h>
 #include <linux/mm_inline.h>
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-//Peifeng.Li@PSW.Kernel.BSP.Memory, 2020/04/22,virtual reserve memory
-#include <linux/resmap_account.h>
-#endif
+
 #include "internal.h"
 
 bool can_do_mlock(void)
@@ -652,20 +649,8 @@ static unsigned long count_mm_mlocked_page_nr(struct mm_struct *mm,
 		mm = current->mm;
 
 	vma = find_vma(mm, start);
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-	if (vma == NULL) {
-		/* Kui.Zhang@TEC.Kernel.Performance, 2019/03/13
-		 * deal with the reserved area
-		 */
-		if (start_is_backed_addr(mm, start))
-			vma = mm->reserve_mmap;
-		else
-			vma = mm->mmap;
-	}
-#else
 	if (vma == NULL)
 		vma = mm->mmap;
-#endif
 
 	for (; vma ; vma = vma->vm_next) {
 		if (start >= vma->vm_end)
@@ -810,23 +795,6 @@ static int apply_mlockall_flags(int flags)
 		mlock_fixup(vma, &prev, vma->vm_start, vma->vm_end, newflags);
 		cond_resched();
 	}
-
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-	/* Kui.Zhang@TEC.Kernel.Performance, 2019/03/13
-	 * deal with the reserved area
-	 */
-	for (vma = current->mm->reserve_mmap; vma ; vma = prev->vm_next) {
-		vm_flags_t newflags;
-
-		newflags = vma->vm_flags & VM_LOCKED_CLEAR_MASK;
-		newflags |= to_add;
-
-		/* Ignore errors */
-		mlock_fixup(vma, &prev, vma->vm_start, vma->vm_end, newflags);
-		cond_resched();
-	}
-#endif
-
 out:
 	return 0;
 }

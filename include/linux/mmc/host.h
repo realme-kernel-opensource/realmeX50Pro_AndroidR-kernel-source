@@ -559,10 +559,6 @@ struct mmc_host {
 
 	struct delayed_work	detect;
 	int			detect_change;	/* card detect flag */
-#ifdef OPLUS_FEATURE_EMMC_SDCARD_OPTIMIZE
-//Lycan.Wang@Prd.BasicDrv, 2014-07-10 Add for retry 5 times when new sdcard init error
-    int detect_change_retry;
-#endif /* OPLUS_FEATURE_EMMC_SDCARD_OPTIMIZE */
 	struct mmc_slot		slot;
 
 	const struct mmc_bus_ops *bus_ops;	/* current bus driver */

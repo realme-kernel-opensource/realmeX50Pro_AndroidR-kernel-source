@@ -5,7 +5,7 @@
 #include <linux/uaccess.h>
 #include <linux/sysfs.h>
 #include <linux/gpio.h>
-#include <soc/oplus/system/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 
 #define MAX_CMD_LENGTH 32
 

@@ -30,10 +30,6 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/wbt.h>
 
-#if defined(OPLUS_FEATURE_UIFIRST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
-/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-extern bool sysctl_wbt_enable;
-#endif /*VENDOR_EDIT*/
 static inline void wbt_clear_state(struct request *rq)
 {
 	rq->wbt_flags = 0;
@@ -80,12 +76,7 @@ enum {
 
 static inline bool rwb_enabled(struct rq_wb *rwb)
 {
-#if defined(OPLUS_FEATURE_UIFIRST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
-/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-	return sysctl_wbt_enable && rwb && rwb->wb_normal != 0;
-#else
 	return rwb && rwb->wb_normal != 0;
-#endif /*VENDOR_EDIT*/
 }
 
 static void wb_timestamp(struct rq_wb *rwb, unsigned long *var)
@@ -190,12 +181,7 @@ static void __wbt_done(struct rq_qos *rqos, enum wbt_flags wb_acct)
  * Called on completion of a request. Note that it's also called when
  * a request is merged, when the request gets freed.
  */
-#if defined(OPLUS_FEATURE_UIFIRST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
-/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-static void wbt_done(struct rq_qos *rqos, struct request *rq, bool fgux)
-#else
 static void wbt_done(struct rq_qos *rqos, struct request *rq)
-#endif /*VENDOR_EDIT*/
 {
 	struct rq_wb *rwb = RQWB(rqos);
 
@@ -205,12 +191,7 @@ static void wbt_done(struct rq_qos *rqos, struct request *rq)
 			rwb->sync_cookie = NULL;
 		}
 
-#if defined(OPLUS_FEATURE_UIFIRST) && defined(CONFIG_OPLUS_FEATURE_UXIO_FIRST)
-/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-		if (wbt_is_read(rq) || fgux)
-#else
 		if (wbt_is_read(rq))
-#endif /*VENDOR_EDIT*/
 			wb_timestamp(rwb, &rwb->last_comp);
 	} else {
 		WARN_ON_ONCE(rq == rwb->sync_cookie);

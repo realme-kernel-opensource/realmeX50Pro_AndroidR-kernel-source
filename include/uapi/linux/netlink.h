@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #ifndef _UAPI__LINUX_NETLINK_H
 #define _UAPI__LINUX_NETLINK_H
-#define OPLUS_FEATURE_WIFI_LUCKYMONEY
 
 #include <linux/kernel.h>
 #include <linux/socket.h> /* for __kernel_sa_family_t */
@@ -33,51 +32,7 @@
 #define NETLINK_SOCKEV		23	/* Socket Administrative Events */
 #define NETLINK_INET_DIAG	NETLINK_SOCK_DIAG
 
-#ifdef OPLUS_FEATURE_WIFI_LUCKYMONEY
-//HuangYuan@CONNECTIVITY.WIFI.INTERNET, 2018/06/18, Add for WeChat lucky money recognition
-#define NETLINK_OPPO_NF_HOOKS	32
-#endif /* OPLUS_FEATURE_WIFI_LUCKYMONEY */
-
-#ifdef OPLUS_FEATURE_HANS_FREEZE
-//#Kun.Zhou@ANDROID.RESCONTROL, 2019/09/23, add for hans freeze manager
-#define NETLINK_OPPO_HANS       28      /* Socket for freezing solution*/
-#endif /*OPLUS_FEATURE_HANS_FREEZE*/
-//#ifdef OPLUS_FEATURE_WIFI_SLA
-//HuangJunyuan@CONNECTIVITY.WIFI.INTERNET.1197891, 2018/04/10,Add code for appo sla function
-#define NETLINK_OPPO_SLA  33      /*SLA NETLINK SOCK*/
-//#endif /* OPLUS_FEATURE_WIFI_SLA */
-
-//Xiong.Li@TECH.CN.WiFi.Network.2022890,2019/06/14
-//Add for apps network monitors
-#define NETLINK_OPPO_APPS_MONITOR  35      /* Apps monitor NETLINK SOCK */
-//#endif /* VENDOR_EDIT */
-
-//#ifdef OPLUS_FEATURE_NWPOWER
-//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-#define NETLINK_OPPO_NWPOWERSTATE	36	/*OPPO NW PowerState*/
-//#endif /* OPLUS_FEATURE_NWPOWER */
-
-//#ifdef VENDOR_EDIT
-//#Hao.Peng@PSW.CN.WiFi.Network.internet.8124, 2020/05/08, add for network quality evaluation.
-#define NETLINK_OPLUS_KERNEL2USER  37      /* kernel data info to user space */
-//#endif /* VENDOR_EDIT */
-
-//#ifdef OPLUS_FEATURE_DHCP
-//LianGenglin@CONNECTIVITY.WIFI.INTERNET, 2020/05/09, Add for Dhcp conflict
-#define NETLINK_OPPO_DHCP 38
-//#endif /* OPLUS_FEATURE_DHCP */
-
-//#ifdef OPLUS_FEATURE_WIFI_CAPCENTER
-//XuFenghua@CONNECTIVITY.WIFI.BASIC.CAPCENTER.190453, 2020/07/05, Add for Oppo WIFI Cap Center
-#define NETLINK_OPPO_WIFI_CAP_CENTER_SYNC 39
-#define NETLINK_OPPO_WIFI_CAP_CENTER_ASYNC 40
-
-/*#Zhao.Pan@MULTIMEDIA.AUDIODRIVER.FEATURE.FEEDBACK, 2020.10.28, add for multimedia kevent*/
-/* #define OPLUS_NETLINK_MM_KEVENT 41  (defined in oplus_mm_kevent.h file) */
-
-//#define MAX_LINKS 40
-#define MAX_LINKS 42
-//#endif /* OPLUS_FEATURE_WIFI_CAPCENTER */
+#define MAX_LINKS 32		
 
 struct sockaddr_nl {
 	__kernel_sa_family_t	nl_family;	/* AF_NETLINK	*/

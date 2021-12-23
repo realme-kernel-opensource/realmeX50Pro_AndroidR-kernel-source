@@ -1,37 +1,33 @@
 # SPDX-License-Identifier: GPL-2.0
-#ifndef VENDOR_EDIT
-#/*Fei.Mo@BSP.kernel.Stability, 2019/07/11, Add for spllit dtbo*/
-#subdir-y += actions
-#subdir-y += al
-#subdir-y += allwinner
-#subdir-y += altera
-#subdir-y += amd
-#subdir-y += amlogic
-#subdir-y += apm
-#subdir-y += arm
-#subdir-y += broadcom
-#subdir-y += cavium
-#subdir-y += exynos
-#subdir-y += freescale
-#subdir-y += hisilicon
-#subdir-y += lg
-#subdir-y += marvell
-#subdir-y += mediatek
-#subdir-y += nvidia
-#subdir-y += qcom
-#subdir-y += realtek
-#subdir-y += renesas
-#subdir-y += rockchip
-#subdir-y += socionext
-#subdir-y += sprd
-#subdir-y += synaptics
-#subdir-y += ti
-#subdir-y += xilinx
-#subdir-y += zte
-#else
+ifneq ($(CONFIG_OPPO_COMMON_SOFT),y)
+subdir-y += actions
+subdir-y += al
+subdir-y += allwinner
+subdir-y += altera
+subdir-y += amd
+subdir-y += amlogic
+subdir-y += apm
+subdir-y += arm
+subdir-y += broadcom
+subdir-y += cavium
+subdir-y += exynos
+subdir-y += freescale
+subdir-y += hisilicon
+subdir-y += lg
+subdir-y += marvell
+subdir-y += mediatek
+subdir-y += nvidia
 subdir-y += qcom
-#endif
-
+subdir-y += realtek
+subdir-y += renesas
+subdir-y += rockchip
+subdir-y += socionext
+subdir-y += sprd
+subdir-y += synaptics
+subdir-y += ti
+subdir-y += xilinx
+subdir-y += zte
+endif
 
 dtstree		:= $(srctree)/$(src)
 

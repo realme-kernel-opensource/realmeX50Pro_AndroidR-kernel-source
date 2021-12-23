@@ -24,8 +24,8 @@
 #endif
 #include <linux/timer.h>
 #include <linux/slab.h>
-#include <soc/oppo/device_info.h>
-#include <soc/oppo/oppo_project.h>
+#include <soc/oplus/device_info.h>
+#include <soc/oplus/oppo_project.h>
 #include <linux/firmware.h>
 
 #define OPPO_VOOC_MCU_HWID_UNKNOW   -1
@@ -63,16 +63,6 @@ enum {
 	PORTABLE_20W_3 = 0x36,
 };
 
-enum e_fastchg_power{
-	FASTCHG_POWER_UNKOWN,
-	FASTCHG_POWER_5V4A_5V6A_VOOC,
-	FASTCHG_POWER_11V3A_FLASHCHARGER,
-	FASTCHG_POWER_10V5A_SINGLE_BAT_SVOOC,
-	FASTCHG_POWER_10V5A_TWO_BAT_SVOOC,
-	FASTCHG_POWER_10V6P5A_TWO_BAT_SVOOC,
-	FASTCHG_POWER_OTHER,
-};
-
 enum {
 	BAT_TEMP_NATURAL = 0,
 	BAT_TEMP_HIGH0,
@@ -91,19 +81,6 @@ enum {
 	BAT_TEMP_OVER_LOW_EXIT,
 };
 
-enum {
-	FASTCHG_TEMP_RANGE_INIT = 0,
-	FASTCHG_TEMP_RANGE_LITTLE_COLD,/*0 ~ 5*/
-	FASTCHG_TEMP_RANGE_COOL,/*5 ~ 12*/
-	FASTCHG_TEMP_RANGE_LITTLE_COOL, /*12 `16*/
-	FASTCHG_TEMP_RANGE_NORMAL_LOW, /*16-25*/
-	FASTCHG_TEMP_RANGE_NORMAL_HIGH, /*25-43*/
-};
-
-enum {
-	FASTCHG_STRATEGY_LITTLE_COLD_TO_COLD,
-	FASTCHG_STRATEGY_COLD_TO_LITTLE_COLD,
-};
 
 struct vooc_gpio_control {
 	int switch1_gpio;
@@ -145,7 +122,6 @@ struct oppo_vooc_chip {
 	struct delayed_work fastchg_work;
 	struct delayed_work delay_reset_mcu_work;
 	struct delayed_work check_charger_out_work;
-	struct delayed_work reset_vooc_start_temp_dwork;
 	struct work_struct vooc_watchdog_work;
 	struct timer_list watchdog;
 
@@ -189,28 +165,18 @@ struct oppo_vooc_chip {
 	bool vooc_fw_update_newmethod;
 	char *fw_path;
 	struct mutex pinctrl_mutex;
-	int vooc_temp_cur_range;
 	int vooc_little_cool_temp;
 	int vooc_cool_temp;
-	int vooc_little_cold_temp;
-	int vooc_normal_low_temp;
-	int vooc_little_cool_temp_default;
-	int vooc_cool_temp_default;
-	int vooc_little_cold_temp_default;
-	int vooc_normal_low_temp_default;
 	int vooc_little_cool_to_normal_temp;
 	int vooc_normal_to_little_cool_current;
 	int vooc_low_temp;
 	int vooc_high_temp;
 	int vooc_low_soc;
 	int vooc_high_soc;
-	int vooc_chg_current_now;
 	int fast_chg_type;
 	bool disable_adapter_output;// 0--vooc adapter output normal,  1--disable vooc adapter output
 	int set_vooc_current_limit;///0--no limit;  1--max current limit 2A
 	bool vooc_multistep_adjust_current_support;
-	int vooc_reply_mcu_bits;
-	int vooc_low_temp_smart_charge;
 	int vooc_multistep_initial_batt_temp;
 	int vooc_strategy_normal_current;
 	int vooc_strategy1_batt_high_temp0;
@@ -243,15 +209,7 @@ struct oppo_vooc_chip {
 /* Zhangkun@BSP.CHG.Basic, 2020/08/17, Add for svooc detect and detach */
 	int detach_unexpectly;
 	bool disable_real_fast_chg;
-
-	bool temp_range_init;
-	bool w_soc_temp_to_mcu;
-	int soc_range;
-	int vooc_start_temp;
-	int fastchg_strategy_change_status;
 };
-
-#define INVALID_TEMPERATUE (-9999)
 
 #define MAX_FW_NAME_LENGTH	60
 #define MAX_DEVICE_VERSION_LENGTH 16
@@ -325,7 +283,6 @@ void oppo_vooc_uart_reset(void);
 void oppo_vooc_set_adapter_update_real_status(int real);
 void oppo_vooc_set_adapter_update_report_status(int report);
 int oppo_vooc_get_fast_chg_type(void);
-int oplus_vooc_get_reply_bits(void);
 void oppo_vooc_set_disable_adapter_output(bool disable);
 void oppo_vooc_set_vooc_max_current_limit(int current_level);
 /* Zhangkun@BSP.CHG.Basic, 2020/08/17, Add for svooc detect and detach */
@@ -333,10 +290,6 @@ bool oppo_vooc_get_detach_unexpectly(void);
 void oppo_vooc_set_detach_unexpectly(bool val);
 void oppo_vooc_set_disable_real_fast_chg(bool val);
 int oppo_vooc_get_smaller_battemp_cooldown(int ret_batt, int ret_cool);
-void oplus_vooc_get_vooc_chip_handle(struct oppo_vooc_chip **chip);
-void oplus_vooc_reset_temp_range(struct oppo_vooc_chip *chip);
 
 extern int get_vooc_mcu_type(struct oppo_vooc_chip *chip);
-bool opchg_get_mcu_update_state(void);
-
 #endif /* _OPPO_VOOC_H */

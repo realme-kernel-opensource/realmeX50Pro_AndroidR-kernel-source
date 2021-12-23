@@ -97,45 +97,7 @@ struct cam_ois_fw_info {
 	uint32_t ois_fw_prog_size;
 };
 
-
-struct cam_ois_ctrl_t {
-	char device_name[CAM_CTX_DEV_NAME_MAX_LENGTH];
-	struct platform_device *pdev;
-	struct mutex ois_mutex;
-	struct cam_hw_soc_info soc_info;
-	struct camera_io_master io_master_info;
-	enum cci_i2c_master_t cci_i2c_master;
-	enum cci_device_num cci_num;
-	struct cam_subdev v4l2_dev_str;
-	struct cam_ois_intf_params bridge_intf;
-	struct i2c_settings_array i2c_init_data;
-	struct i2c_settings_array i2c_calib_data;
-	struct i2c_settings_array i2c_mode_data;
-	enum msm_camera_device_type_t ois_device_type;
-	enum cam_ois_state cam_ois_state;
-	char ois_name[32];
-	uint8_t ois_fw_flag;
-	uint8_t is_ois_calib;
-	struct cam_ois_opcode opcode;
-#ifdef VENDOR_EDIT
-	enum cam_ois_type_vendor ois_type;  //Master or Slave
-	uint8_t ois_gyro_position;          //Gyro positon
-	uint8_t ois_gyro_vendor;            //Gyro vendor
-	uint8_t ois_actuator_vendor;        //Actuator vendor
-	uint8_t ois_module_vendor;          //Module vendor
-	struct mutex ois_read_mutex;
-	bool ois_read_thread_start_to_read;
-	struct task_struct *ois_read_thread;
-	struct mutex ois_hall_data_mutex;
-	struct mutex ois_poll_thread_mutex;
-	bool ois_poll_thread_exit;
-	uint32_t ois_poll_thread_control_cmd;
-	struct task_struct *ois_poll_thread;
-	struct kfifo ois_hall_data_fifo;
-	struct kfifo ois_hall_data_fifoV2;
-	struct cam_ois_fw_info m_ois_fw_mode;
-#endif
-};
+struct cam_ois_ctrl_t;
 
 void init_ois_hall_data(struct cam_ois_ctrl_t *o_ctrl);
 

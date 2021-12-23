@@ -32,10 +32,6 @@
 #include <linux/dax.h>
 #include <linux/sched/signal.h>
 #include <linux/swap.h>
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-#include <linux/oppo_iomonitor/iomonitor.h>
-#endif
 
 #include "internal.h"
 
@@ -1701,10 +1697,6 @@ iomap_dio_bio_actor(struct inode *inode, loff_t pos, loff_t length,
 			else
 				dio->flags &= ~IOMAP_DIO_WRITE_FUA;
 			task_io_account_write(n);
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-			iomonitor_update_rw_stats(DIO_WRITE, NULL, n);
-#endif
 		} else {
 			bio->bi_opf = REQ_OP_READ;
 			if (dio->flags & IOMAP_DIO_DIRTY)

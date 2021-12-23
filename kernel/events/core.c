@@ -9027,37 +9027,6 @@ static void perf_addr_filters_splice(struct perf_event *event,
  * @filter; if so, adjust filter's address range.
  * Called with mm::mmap_sem down for reading.
  */
-
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-/* Kui.Zhang@TEC.Kernel.Performance, 2019/03/13
- * deal with the reserved area
- */
-static unsigned long perf_addr_filter_apply_reserved(struct perf_addr_filter *filter,
-		struct mm_struct *mm)
-{
-    struct vm_area_struct *vma;
-
-    if (!mm->reserve_vma)
-        return 0;
-
-    for (vma = mm->reserve_mmap; vma; vma = vma->vm_next) {
-        struct file *file = vma->vm_file;
-        unsigned long off = vma->vm_pgoff << PAGE_SHIFT;
-        unsigned long vma_size = vma->vm_end - vma->vm_start;
-
-        if (!file)
-            continue;
-
-        if (!perf_addr_filter_match(filter, file, off, vma_size))
-            continue;
-
-        return vma->vm_start;
-    }
-
-    return 0;
-}
-#endif
-
 static void perf_addr_filter_apply(struct perf_addr_filter *filter,
 				   struct mm_struct *mm,
 				   struct perf_addr_filter_range *fr)
@@ -9065,24 +9034,8 @@ static void perf_addr_filter_apply(struct perf_addr_filter *filter,
 	struct vm_area_struct *vma;
 
 	for (vma = mm->mmap; vma; vma = vma->vm_next) {
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-		/* Kui.Zhang@TEC.Kernel.Performance, 2019/03/13
-		 * deal with the reserved area
-		 */
-		if (!vma->vm_file) {
-			unsigned long addr;
-
-			if (vma != mm->reserve_vma)
-				continue;
-			addr = perf_addr_filter_apply_reserved(filter, mm);
-			if (addr)
-				return;
-			continue;
-		}
-#else
 		if (!vma->vm_file)
 			continue;
-#endif
 
 		if (perf_addr_filter_vma_adjust(filter, vma, fr))
 			return;

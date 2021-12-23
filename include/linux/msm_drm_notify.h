@@ -39,7 +39,7 @@ struct msm_drm_notifier {
 	void *data;
 };
 
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
 int msm_drm_register_client(struct notifier_block *nb);
 int msm_drm_unregister_client(struct notifier_block *nb);
 #else

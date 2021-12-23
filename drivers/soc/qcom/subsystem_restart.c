@@ -33,20 +33,8 @@
 #include <linux/of.h>
 #include <asm/current.h>
 #include <linux/timer.h>
-#include <linux/seq_file.h>
-#include <linux/proc_fs.h>
 
 #include "peripheral-loader.h"
-#ifdef VENDOR_EDIT
-/*Bin.Li@BSP.Kernel.Driver, 2019/10/24, Add for disable dump for subsys crash*/
-#include <soc/oppo/oppo_project.h>
-extern bool oem_is_fulldump(void);
-bool delay_panic = false;
-#endif
-#ifdef OPLUS_BUG_STABILITY
-/*xing.xiong@BSP.Kernel.Driver, 2019/10/29, Add for 5G modem dump*/
-bool direct_panic = false;
-#endif
 
 #define DISABLE_SSR 0x9889deed
 /* If set to 0x9889deed, call to subsystem_restart_dev() returns immediately */
@@ -55,10 +43,6 @@ module_param(disable_restart_work, uint, 0644);
 
 static int enable_debug;
 module_param(enable_debug, int, 0644);
-//#ifdef OPLUS_FEATURE_SENSOR
-//tangjh@PSW.BSP.SENSOR ,2020/07/27 add for slpi/adsp crash reason
-static DEFINE_MUTEX(subsys_list_lock);
-//#endif
 
 /* The maximum shutdown timeout is the product of MAX_LOOPS and DELAY_MS. */
 #define SHUTDOWN_ACK_MAX_LOOPS	100
@@ -379,41 +363,7 @@ static ssize_t system_debug_store(struct device *dev,
 	return orig_count;
 }
 static DEVICE_ATTR_RW(system_debug);
-//#ifdef OPLUS_FEATURE_SENSOR
-//tangjh@PSW.BSP.SENSOR ,2020/07/27 add for slpi/adsp crash reason
-#define CRASH_CAUSE_BUF_LEN 128
-char crash_case_buf[CRASH_CAUSE_BUF_LEN] = {0};
 
-void set_subsys_crash_cause(char *str){
-	int len = 0;
-	len = strlen(str);
-	if(len >= CRASH_CAUSE_BUF_LEN)
-		len = CRASH_CAUSE_BUF_LEN -1;
-	//mutex_lock(&subsys_list_lock);
-	memcpy(crash_case_buf, str, len);
-	crash_case_buf[len] = '\0';
-	//mutex_unlock(&subsys_list_lock);
-}
-EXPORT_SYMBOL(set_subsys_crash_cause);
-
-static ssize_t crash_cause_show(struct device *dev,
-				struct device_attribute *attr, char *buf)
-{
-	int ret = 0;
-	mutex_lock(&subsys_list_lock);
-	ret = snprintf(buf, PAGE_SIZE, "%s\n", crash_case_buf);
-	mutex_unlock(&subsys_list_lock);
-	return ret;
-}
-
-static ssize_t crash_cause_store(struct device *dev,
-				struct device_attribute *attr, const char *buf,
-				size_t count)
-{
-	return count;
-}
-static DEVICE_ATTR_RW(crash_cause);
-//#endif
 int subsys_get_restart_level(struct subsys_device *dev)
 {
 	return dev->restart_level;
@@ -456,10 +406,6 @@ static struct attribute *subsys_attrs[] = {
 	&dev_attr_restart_level.attr,
 	&dev_attr_firmware_name.attr,
 	&dev_attr_system_debug.attr,
-	//#ifdef OPLUS_FEATURE_SENSOR
-	//tangjh@PSW.BSP.SENSOR ,2020/07/27 add for slpi/adsp crash reason
-	&dev_attr_crash_cause.attr,
-	//#endif
 	NULL,
 };
 
@@ -487,10 +433,7 @@ static LIST_HEAD(subsys_list);
 static LIST_HEAD(ssr_order_list);
 static DEFINE_MUTEX(soc_order_reg_lock);
 static DEFINE_MUTEX(restart_log_mutex);
-//#ifdef OPLUS_FEATURE_SENSOR
-//tangjh@PSW.BSP.SENSOR ,2020/07/27 add for slpi/adsp crash reason
-//static DEFINE_MUTEX(subsys_list_lock);
-//#endif
+static DEFINE_MUTEX(subsys_list_lock);
 static DEFINE_MUTEX(char_device_lock);
 static DEFINE_MUTEX(ssr_order_mutex);
 
@@ -908,31 +851,6 @@ struct subsys_device *find_subsys_device(const char *str)
 }
 EXPORT_SYMBOL(find_subsys_device);
 
-#ifdef OPLUS_BUG_STABILITY
-/* Fuchun.Liao@BSP.CHG.Basic 2018/11/27 modify for rf cable detect */
-int op_restart_modem(struct subsys_device *subsys)
-{
-	int restart_level;
-
-	if (!subsys) {
-		return -ENODEV;
-	}
-
-	pr_err("%s\n", __func__);
-
-	restart_level = subsys->restart_level;
-	subsys->restart_level = RESET_SUBSYS_COUPLED;
-	if (subsys->desc->force_reset) {
-		subsys->desc->force_reset(subsys->desc);
-	}
-
-	subsys->restart_level = restart_level;
-
-	return 0;
-}
-EXPORT_SYMBOL(op_restart_modem);
-#endif /* OPLUS_BUG_STABILITY */
-
 static int subsys_start(struct subsys_device *subsys)
 {
 	int ret;
@@ -1311,44 +1229,6 @@ static void device_restart_work_hdlr(struct work_struct *work)
 							dev->desc->name);
 }
 
-#ifdef OPLUS_FEATURE_MODEM_MINIDUMP
-//Liu.Wei@NETWORK.RF.10384, 2020/03/27, Add for report modem crash uevent
-void __subsystem_send_uevent(struct device *dev, char *reason)
-{
-	int ret_val;
-	char modem_event[] = "MODEM_EVENT=modem_failure";
-	char modem_reason[300] = {0};
-	char *envp[3];
-
-	envp[0] = (char *)&modem_event;
-	if(reason){
-		snprintf(modem_reason, sizeof(modem_reason),"MODEM_REASON=%s", reason);
-	}else{
-	    snprintf(modem_reason, sizeof(modem_reason),"MODEM_REASON=unkown");
-	}
-	modem_reason[299] = 0;
-	envp[1] = (char *)&modem_reason;
-	envp[2] = 0;
-
-	if(dev){
-		ret_val = kobject_uevent_env(&(dev->kobj), KOBJ_CHANGE, envp);
-		if(!ret_val){
-			pr_info("modem crash:kobject_uevent_env success!\n");
-		}else{
-			pr_info("modem crash:kobject_uevent_env fail,error=%d!\n", ret_val);
-		}
-    }
-}
-EXPORT_SYMBOL(__subsystem_send_uevent);
-
-void subsystem_send_uevent(struct subsys_device *dev, char *reason)
-{
-	__subsystem_send_uevent(&(dev->dev), reason);
-	return;
-}
-EXPORT_SYMBOL(subsystem_send_uevent);
-#endif /*OPLUS_FEATURE_MODEM_MINIDUMP*/
-
 int subsystem_restart_dev(struct subsys_device *dev)
 {
 	const char *name;
@@ -1402,20 +1282,8 @@ int subsystem_restart_dev(struct subsys_device *dev)
 		__subsystem_restart_dev(dev);
 		break;
 	case RESET_SOC:
-	#ifdef VENDOR_EDIT
-	/*xing.xiong@BSP.Kernel.Driver, 2019/10/29, Add for 5G modem dump*/
-		if ((!strcmp(name, "esoc0") && oem_is_fulldump()) && !direct_panic) {
-			delay_panic = true;
-			__subsystem_restart_dev(dev);
-		} else {
-			direct_panic = false;
-			__pm_stay_awake(dev->ssr_wlock);
-			schedule_work(&dev->device_restart_work);
-		}
-	#else
 		__pm_stay_awake(dev->ssr_wlock);
 		schedule_work(&dev->device_restart_work);
-	#endif
 		return 0;
 	default:
 		panic("subsys-restart: Unknown restart level!\n");
@@ -1988,8 +1856,7 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 	/*YiXue.Ge@PSW.BSP.Kernel.Driver,2017/05/15,
 	 * Add for init subsyst restart level as RESET_SUBSYS_COUPLED at mp build
 	 */
-	if(!oppo_daily_build() && !(get_eng_version() == AGING))
-		subsys->restart_level = RESET_SUBSYS_COUPLED;
+	subsys->restart_level = RESET_SUBSYS_COUPLED;
 #endif /*OPLUS_BUG_STABILITY */
 	subsys->desc->sysmon_pid = -1;
 	subsys->desc->state = NULL;
@@ -2148,66 +2015,10 @@ static struct notifier_block panic_nb = {
 	.notifier_call  = ssr_panic_handler,
 };
 
-extern bool ts_wait_error;
-extern bool ts_send_error;
-#ifdef CONFIG_ESOC_MDM_4x
-extern bool modem_force_rst;
-#endif
-
-static ssize_t force_rst_write(struct file *file,
-				const char __user *buf,
-				size_t count,
-				loff_t *lo)
-{
-	char read_buf[4] = {0};
-	struct subsys_device *subsys = find_subsys_device("esoc0");
-
-	if (!subsys)
-		return 0;
-
-	if (copy_from_user(read_buf, buf, 1)) {
-		pr_err("%s: failed to copy from user.\n", __func__);
-		return count;
-	}
-
-	pr_info("%s: %s\n", __func__, read_buf);
-
-	if (!strncmp(read_buf, "2", 1)) {
-		panic("force esoc crash");
-	}
-
-	if (!strncmp(read_buf, "1", 1) && (ts_send_error || ts_wait_error)) {
-#ifdef CONFIG_ESOC_MDM_4x
-		modem_force_rst = true;
-#endif
-		ts_wait_error = false;
-		ts_send_error = false;
-		pr_err("force to reset modem\n");
-		op_restart_modem(subsys);
-	}
-
-	return count;
-}
-
-static ssize_t force_rst_read(struct file *file,
-				char __user *buf,
-				size_t count,
-				loff_t *ppos)
-{
-	return count;
-}
-
-static const struct file_operations esoc_force_rst_fops = {
-    .write = force_rst_write,
-    .read  = force_rst_read,
-    .open  = simple_open,
-    .owner = THIS_MODULE,
-};
-
 static int __init subsys_restart_init(void)
 {
 	int ret;
-	struct proc_dir_entry *d_entry = NULL;
+
 	ssr_wq = alloc_workqueue("ssr_wq",
 		WQ_UNBOUND | WQ_HIGHPRI | WQ_CPU_INTENSIVE, 0);
 	BUG_ON(!ssr_wq);
@@ -2227,11 +2038,6 @@ static int __init subsys_restart_init(void)
 			&panic_nb);
 	if (ret)
 		goto err_soc;
-
-	d_entry = proc_create_data("force_reset", 0666, NULL, &esoc_force_rst_fops, NULL);
-	if (!d_entry) {
-		goto err_soc;
-	}
 
 	return 0;
 

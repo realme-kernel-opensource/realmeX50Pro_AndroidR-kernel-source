@@ -38,18 +38,6 @@
 #include "ion.h"
 #include "ion_secure_util.h"
 
-#ifdef OPLUS_FEATURE_HEALTHINFO
-//Jiheng.Xie@TECH.BSP.Performance, 2019/07/11, add for ion wait monitor
-#if defined(CONFIG_OPPO_HEALTHINFO) && defined (CONFIG_OPPO_MEM_MONITOR)
-#include <linux/oppo_healthinfo/memory_monitor.h>
-#endif
-#endif /* OPLUS_FEATURE_HEALTHINFO */
-
-#ifdef OPLUS_FEATURE_HEALTHINFO
-//Jiheng.Xie@TECH.BSP.Kernel.Performance, 2020/03/24, add for ion total used account
-#include <linux/oppo_healthinfo/oppo_ion.h>
-#endif /* OPLUS_FEATURE_HEALTHINFO */
-
 static struct ion_device *internal_dev;
 static atomic_long_t total_heap_bytes;
 
@@ -169,29 +157,10 @@ static struct ion_buffer *ion_buffer_create(struct ion_heap *heap,
 		}
 	}
 
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_DUMP_TASKS_MEM)
-	/* Peifeng.Li@BSP.Kernel.MM, 2020-05-20 upate ion buffer informaction
-	 * of the task.
-	 */
-	buffer->tsk = current->group_leader;
-	get_task_struct(buffer->tsk);
-	atomic64_add(buffer->size, &buffer->tsk->ions);
-#endif
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_MEMLEAK_DETECT_THREAD)
-	/* Kui.Zhang@BSP.Kernel.MM, 2020-05-20 add record the buffer
-	 * create time and calc the buffer age on dump.
-	 */
-	buffer->jiffies = jiffies;
-#endif
 	mutex_lock(&dev->buffer_lock);
 	ion_buffer_add(dev, buffer);
 	mutex_unlock(&dev->buffer_lock);
 	atomic_long_add(len, &heap->total_allocated);
-#ifdef OPLUS_FEATURE_HEALTHINFO
-/* Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-06-26, add ion total used account*/
-	if (ion_cnt_enable)
-		atomic_long_add(buffer->size, &ion_total_size);
-#endif /* OPLUS_FEATURE_HEALTHINFO */
 	atomic_long_add(len, &total_heap_bytes);
 	return buffer;
 
@@ -208,19 +177,6 @@ void ion_buffer_destroy(struct ion_buffer *buffer)
 		pr_warn_ratelimited("ION client likely missing a call to dma_buf_kunmap or dma_buf_vunmap\n");
 		buffer->heap->ops->unmap_kernel(buffer->heap, buffer);
 	}
-#ifdef OPLUS_FEATURE_HEALTHINFO
-/* Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-06-26, add ion total used account*/
-	if (ion_cnt_enable)
-		atomic_long_sub(buffer->size, &ion_total_size);
-#endif /* OPLUS_FEATURE_HEALTHINFO */
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_DUMP_TASKS_MEM)
-	/* Peifeng.Li@PSW.BSP.Kernel.MM, 2019-09-5, accounts process-real-phymem*/
-	if (buffer->tsk) {
-		atomic64_sub(buffer->size, &buffer->tsk->ions);
-		put_task_struct(buffer->tsk);
-		buffer->tsk = NULL;
-	}
-#endif /* OPLUS_FEATURE_MEMLEAK_DETECT && CONFIG_MEMLEAK_DETECT_THREAD */
 	buffer->heap->ops->free(buffer);
 	kfree(buffer);
 }
@@ -1077,26 +1033,6 @@ static const struct dma_buf_ops dma_buf_ops = {
 	.get_flags = ion_dma_buf_get_flags,
 };
 
-#ifdef CONFIG_OPLUS_ION_BOOSTPOOL
-pid_t alloc_svc_tgid;
-
-/* TODO use task comm may not safe. */
-inline is_allocator_svc(struct task_struct *tsk)
-{
-	return (tsk->tgid == alloc_svc_tgid);
-}
-
-static inline unsigned int boost_pool_extra_flags(unsigned int heap_id_mask)
-{
-	unsigned int extra_flags = 0;
-
-	if ((heap_id_mask & (1 << ION_CAMERA_HEAP_ID)) || is_allocator_svc(current)) {
-		extra_flags |= ION_FLAG_CAMERA_BUFFER;
-	}
-	return extra_flags;
-}
-#endif /* CONFIG_OPLUS_ION_BOOSTPOOL */
-
 struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 				 unsigned int flags)
 {
@@ -1106,16 +1042,6 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 	struct dma_buf *dmabuf;
 	char task_comm[TASK_COMM_LEN];
-#ifdef CONFIG_OPLUS_ION_BOOSTPOOL
-	unsigned int extra_flags = boost_pool_extra_flags(heap_id_mask);
-#endif /* CONFIG_OPLUS_ION_BOOSTPOOL */
-
-#ifdef OPLUS_FEATURE_HEALTHINFO
-//Jiheng.Xie@TECH.BSP.Performance, 2019/07/11, add for ion wait monitor
-#if defined(CONFIG_OPPO_HEALTHINFO) && defined (CONFIG_OPPO_MEM_MONITOR)
-	unsigned long oppo_ionwait_start = jiffies;
-#endif
-#endif /* OPLUS_FEATURE_HEALTHINFO */
 
 	pr_debug("%s: len %zu heap_id_mask %u flags %x\n", __func__,
 		 len, heap_id_mask, flags);
@@ -1130,31 +1056,16 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 	if (!len)
 		return ERR_PTR(-EINVAL);
 
-#ifdef CONFIG_OPLUS_ION_BOOSTPOOL
-	trace_ion_alloc_start(len, heap_id_mask, flags,
-			    extra_flags ? "true" : "false");
-#endif /* CONFIG_OPLUS_ION_BOOSTPOOL */
-
 	down_read(&dev->lock);
 	plist_for_each_entry(heap, &dev->heaps, node) {
 		/* if the caller didn't specify this heap id */
 		if (!((1 << heap->id) & heap_id_mask))
 			continue;
-#ifdef CONFIG_OPLUS_ION_BOOSTPOOL
-		if (heap->id == ION_SYSTEM_HEAP_ID) {
-			buffer = ion_buffer_create(heap, dev, len,
-						   flags | extra_flags);
-		} else
-#endif
 		buffer = ion_buffer_create(heap, dev, len, flags);
 		if (!IS_ERR(buffer) || PTR_ERR(buffer) == -EINTR)
 			break;
 	}
 	up_read(&dev->lock);
-
-#ifdef CONFIG_OPLUS_ION_BOOSTPOOL
-	trace_ion_alloc_end(len, heap_id_mask, flags, "");
-#endif /* CONFIG_OPLUS_ION_BOOSTPOOL */
 
 	if (!buffer)
 		return ERR_PTR(-ENODEV);
@@ -1176,12 +1087,7 @@ struct dma_buf *ion_alloc_dmabuf(size_t len, unsigned int heap_id_mask,
 		_ion_buffer_destroy(buffer);
 		kfree(exp_info.exp_name);
 	}
-#ifdef OPLUS_FEATURE_HEALTHINFO
-//Jiheng.Xie@TECH.BSP.Performance, 2019/07/11, add for ion wait monitor
-#if defined(CONFIG_OPPO_HEALTHINFO) && defined (CONFIG_OPPO_MEM_MONITOR)
-	oppo_ionwait_monitor(jiffies_to_msecs(jiffies - oppo_ionwait_start));
-#endif 
-#endif /* OPLUS_FEATURE_HEALTHINFO */
+
 	return dmabuf;
 }
 
@@ -1493,9 +1399,3 @@ err_reg:
 	return ERR_PTR(ret);
 }
 EXPORT_SYMBOL(ion_device_create);
-#if defined(OPLUS_FEATURE_MEMLEAK_DETECT) && defined(CONFIG_MEMLEAK_DETECT_THREAD) && defined(CONFIG_OPPO_SVELTE)
-/* Kui.Zhang@BSP.Kernel.MM, 2020-05-20 add ion memleak detect dameon,
- * need CONFIG_DUMP_TASKS_MEM first.
- */
-#include "ion_track/ion_track.c"
-#endif

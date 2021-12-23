@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 #ifndef _CAM_OIS_DEV_H_
 #define _CAM_OIS_DEV_H_
@@ -21,13 +21,10 @@
 #include <cam_subdev.h>
 #include "cam_soc_util.h"
 #include "cam_context.h"
+#include "oplus_cam_ois_dev.h"
 
 #define DEFINE_MSM_MUTEX(mutexname) \
 	static struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)
-
-#ifndef VENDOR_EDIT
-#define VENDOR_EDIT
-#endif
 
 enum cam_ois_state {
 	CAM_OIS_INIT,
@@ -107,7 +104,6 @@ struct cam_ois_intf_params {
  * @device_name     :   Device name
  *
  */
-#ifndef VENDOR_EDIT
 struct cam_ois_ctrl_t {
 	char device_name[CAM_CTX_DEV_NAME_MAX_LENGTH];
 	struct platform_device *pdev;
@@ -127,8 +123,25 @@ struct cam_ois_ctrl_t {
 	uint8_t ois_fw_flag;
 	uint8_t is_ois_calib;
 	struct cam_ois_opcode opcode;
-};
+	uint32_t open_cnt;
+#ifdef VENDOR_EDIT
+	enum cam_ois_type_vendor ois_type;  //Master or Slave
+	uint8_t ois_gyro_position;          //Gyro positon
+	uint8_t ois_gyro_vendor;            //Gyro vendor
+	uint8_t ois_actuator_vendor;        //Actuator vendor
+	uint8_t ois_module_vendor;          //Module vendor
+	struct mutex ois_read_mutex;
+	bool ois_read_thread_start_to_read;
+	struct task_struct *ois_read_thread;
+	struct mutex ois_hall_data_mutex;
+	struct mutex ois_poll_thread_mutex;
+	bool ois_poll_thread_exit;
+	uint32_t ois_poll_thread_control_cmd;
+	struct task_struct *ois_poll_thread;
+	struct kfifo ois_hall_data_fifo;
+	struct kfifo ois_hall_data_fifoV2;
+	struct cam_ois_fw_info m_ois_fw_mode;
 #endif
- #include "oplus_cam_ois_dev.h"
+};
 
 #endif /*_CAM_OIS_DEV_H_ */

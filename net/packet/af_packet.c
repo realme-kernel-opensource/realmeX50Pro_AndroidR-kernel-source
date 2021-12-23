@@ -241,11 +241,6 @@ struct packet_skb_cb {
 static void __fanout_unlink(struct sock *sk, struct packet_sock *po);
 static void __fanout_link(struct sock *sk, struct packet_sock *po);
 
-//#ifdef OPLUS_FEATURE_DHCP
-//LianGenglin@CONNECTIVITY.WIFI.INTERNET, 2020/05/09, Add for Dhcp conflict
-int (*handle_dhcp)(struct sock *sk, struct sk_buff *skb, struct net_device *dev, struct packet_type *pt) = NULL;
-EXPORT_SYMBOL(handle_dhcp);
-//#endif /* OPLUS_FEATURE_DHCP */
 static int packet_direct_xmit(struct sk_buff *skb)
 {
 	return dev_direct_xmit(skb, packet_pick_tx_queue(skb));
@@ -2126,14 +2121,6 @@ static int packet_rcv(struct sk_buff *skb, struct net_device *dev,
 	/* drop conntrack reference */
 	nf_reset(skb);
 
-//#ifdef OPLUS_FEATURE_DHCP
-//LianGenglin@CONNECTIVITY.WIFI.INTERNET, 2020/05/09, Add for Dhcp conflict
-    if (handle_dhcp != NULL && handle_dhcp(sk, skb, dev, pt)) {
-        printk("drop dhcp offer packet");
-        goto drop;
-    }
-//#endif /* OPLUS_FEATURE_DHCP */
-
 	spin_lock(&sk->sk_receive_queue.lock);
 	po->stats.stats1.tp_packets++;
 	sock_skb_set_dropcount(sk, skb);
@@ -2273,6 +2260,13 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 					TP_STATUS_KERNEL, (macoff+snaplen));
 	if (!h.raw)
 		goto drop_n_account;
+
+	if (do_vnet &&
+	    virtio_net_hdr_from_skb(skb, h.raw + macoff -
+				    sizeof(struct virtio_net_hdr),
+				    vio_le(), true, 0))
+		goto drop_n_account;
+
 	if (po->tp_version <= TPACKET_V2) {
 		packet_increment_rx_head(po, &po->rx_ring);
 	/*
@@ -2284,12 +2278,6 @@ static int tpacket_rcv(struct sk_buff *skb, struct net_device *dev,
 		if (po->stats.stats1.tp_drops)
 			status |= TP_STATUS_LOSING;
 	}
-
-	if (do_vnet &&
-	    virtio_net_hdr_from_skb(skb, h.raw + macoff -
-				    sizeof(struct virtio_net_hdr),
-				    vio_le(), true, 0))
-		goto drop_n_account;
 
 	po->stats.stats1.tp_packets++;
 	if (copy_skb) {

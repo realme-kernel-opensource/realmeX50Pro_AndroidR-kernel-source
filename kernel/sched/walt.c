@@ -13,13 +13,6 @@
 #include "walt.h"
 
 #include <trace/events/sched.h>
-#ifdef OPLUS_FEATURE_UIFIRST
-// XuHaifeng@BSP.KERNEL.PERFORMANCE, 2020/08/03, Add for UIFirst(slide boost)
-#include <linux/sched.h>
-extern u64 ux_task_load[];
-extern u64 ux_load_ts[];
-#define UX_LOAD_WINDOW 8000000
-#endif /* OPLUS_FEATURE_UIFIRST */
 
 const char *task_event_names[] = {"PUT_PREV_TASK", "PICK_NEXT_TASK",
 				  "TASK_WAKE", "TASK_MIGRATE", "TASK_UPDATE",
@@ -221,12 +214,19 @@ void inc_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
 	inc_nr_big_task(&rq->walt_stats, p);
 	walt_inc_cumulative_runnable_avg(rq, p);
+
+	p->rtg_high_prio = task_rtg_high_prio(p);
+	if (p->rtg_high_prio)
+		rq->walt_stats.nr_rtg_high_prio_tasks++;
+
 }
 
 void dec_rq_walt_stats(struct rq *rq, struct task_struct *p)
 {
 	dec_nr_big_task(&rq->walt_stats, p);
 	walt_dec_cumulative_runnable_avg(rq, p);
+	if (p->rtg_high_prio)
+		rq->walt_stats.nr_rtg_high_prio_tasks--;
 }
 
 void fixup_walt_sched_stats_common(struct rq *rq, struct task_struct *p,
@@ -431,22 +431,27 @@ void sched_account_irqtime(int cpu, struct task_struct *curr,
 				 u64 delta, u64 wallclock)
 {
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long flags, nr_windows;
+	unsigned long nr_windows;
 	u64 cur_jiffies_ts;
 
-	raw_spin_lock_irqsave(&rq->lock, flags);
-
 	/*
-	 * cputime (wallclock) uses sched_clock so use the same here for
-	 * consistency.
+	 * We called with interrupts disabled. Take the rq lock only
+	 * if we are in idle context in which case update_task_ravg()
+	 * call is needed.
 	 */
-	delta += sched_clock() - wallclock;
-	cur_jiffies_ts = get_jiffies_64();
-
-	if (is_idle_task(curr))
+	if (is_idle_task(curr)) {
+		raw_spin_lock(&rq->lock);
+		/*
+		 * cputime (wallclock) uses sched_clock so use the same here
+		 * for consistency.
+		 */
+		delta += sched_clock() - wallclock;
 		update_task_ravg(curr, rq, IRQ_UPDATE, sched_ktime_clock(),
 				 delta);
+		raw_spin_unlock(&rq->lock);
+	}
 
+	cur_jiffies_ts = get_jiffies_64();
 	nr_windows = cur_jiffies_ts - rq->irqload_ts;
 
 	if (nr_windows) {
@@ -464,7 +469,6 @@ void sched_account_irqtime(int cpu, struct task_struct *curr,
 
 	rq->cur_irqload += delta;
 	rq->irqload_ts = cur_jiffies_ts;
-	raw_spin_unlock_irqrestore(&rq->lock, flags);
 }
 
 /*
@@ -511,12 +515,7 @@ static inline u64 freq_policy_load(struct rq *rq)
 	u64 aggr_grp_load = cluster->aggr_grp_load;
 	u64 load, tt_load = 0;
 	struct task_struct *cpu_ksoftirqd = per_cpu(ksoftirqd, cpu_of(rq));
-#ifdef OPLUS_FEATURE_UIFIRST
-	// XuHaifeng@BSP.KERNEL.PERFORMANCE, 2020/08/18, Add for UIFirst(slide boost)
-	u64 wallclock = sched_ktime_clock();
-	u64 timeline = 0;
-	int cpu = cpu_of(rq);
-#endif /* OPLUS_FEATURE_UIFIRST */
+
 	if (rq->ed_task != NULL) {
 		load = sched_ravg_window;
 		goto done;
@@ -551,15 +550,6 @@ static inline u64 freq_policy_load(struct rq *rq)
 			load = div64_u64(load * sysctl_sched_user_hint,
 					 (u64)100);
 	}
-#ifdef OPLUS_FEATURE_UIFIRST
-	// XuHaifeng@BSP.KERNEL.PERFORMANCE, 2020/08/18, Add for UIFirst(slide boost)
-	if (sysctl_uifirst_enabled && sysctl_slide_boost_enabled && ux_load_ts[cpu]) {
-		timeline = wallclock - ux_load_ts[cpu];
-		if  (timeline >= UX_LOAD_WINDOW)
-			ux_task_load[cpu] = 0;
-		load = max_t(u64, load, ux_task_load[cpu]);
-	}
-#endif /* OPLUS_FEATURE_UIFIRST */
 
 done:
 	trace_sched_load_to_gov(rq, aggr_grp_load, tt_load, sched_freq_aggr_en,
@@ -649,7 +639,7 @@ cpu_util_freq_walt(int cpu, struct sched_walt_cpu_load *walt_load)
 static inline void account_load_subtractions(struct rq *rq)
 {
 	u64 ws = rq->window_start;
-	u64 prev_ws = ws - sched_ravg_window;
+	u64 prev_ws = ws - rq->prev_window_size;
 	struct load_subtractions *ls = rq->load_subs;
 	int i;
 
@@ -724,7 +714,7 @@ void update_cluster_load_subtractions(struct task_struct *p,
 {
 	struct sched_cluster *cluster = cpu_cluster(cpu);
 	struct cpumask cluster_cpus = cluster->cpus;
-	u64 prev_ws = ws - sched_ravg_window;
+	u64 prev_ws = ws - cpu_rq(cpu)->prev_window_size;
 	int i;
 
 	cpumask_clear_cpu(cpu, &cluster_cpus);
@@ -891,24 +881,7 @@ migrate_top_tasks(struct task_struct *p, struct rq *src_rq, struct rq *dst_rq)
 				src_rq->top_tasks_bitmap[src], top_index);
 	}
 }
-#ifdef OPLUS_FEATURE_EDTASK_IMPROVE
-//Tiren.Ma@ANDROID.POWER, 2020-06-24, Add for improving ed task migration
-void migrate_ed_task(struct task_struct *p, u64 wallclock,
-				struct rq *src_rq, struct rq *dest_rq)
-{
-	int src_cpu = cpu_of(src_rq);
-	int dest_cpu = cpu_of(dest_rq);
 
-	/* For ed task, reset last_wake_ts if task migrate to faster cpu */
-	if (capacity_orig_of(src_cpu) < capacity_orig_of(dest_cpu)) {
-		p->last_wake_ts = wallclock;
-		if(dest_rq->ed_task == p) {
-			dest_rq->ed_task = NULL;
-		}
-	}
-}
-extern int sysctl_ed_task_enabled;
-#endif /* OPLUS_FEATURE_EDTASK_IMPROVE */
 void fixup_busy_time(struct task_struct *p, int new_cpu)
 {
 	struct rq *src_rq = task_rq(p);
@@ -1026,12 +999,7 @@ void fixup_busy_time(struct task_struct *p, int new_cpu)
 			dest_rq->ed_task = p;
 		}
 	}
-#ifdef OPLUS_FEATURE_EDTASK_IMPROVE
-//Tiren.Ma@ANDROID.POWER, 2020-06-24, Add for improving ed task migration
-	if(sysctl_ed_task_enabled) {
-		migrate_ed_task(p, wallclock, src_rq, dest_rq);
-	}
-#endif /* OPLUS_FEATURE_EDTASK_IMPROVE */
+
 done:
 	if (p->state == TASK_WAKING)
 		double_rq_unlock(src_rq, dest_rq);
@@ -1862,9 +1830,6 @@ static void update_history(struct rq *rq, struct task_struct *p,
 	}
 
 	p->ravg.sum = 0;
-#ifdef OPLUS_FEATURE_POWER_CPUFREQ
-	sysctl_sched_window_stats_policy = schedtune_window_policy(p);
-#endif
 
 	if (sysctl_sched_window_stats_policy == WINDOW_STATS_RECENT) {
 		demand = runtime;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/init.h>
@@ -38,7 +38,7 @@ static void cam_sync_print_fence_table(void)
 			sync_dev->sync_table[idx].name,
 			sync_dev->sync_table[idx].type,
 			sync_dev->sync_table[idx].state,
-			sync_dev->sync_table[idx].ref_cnt);
+			atomic_read(&sync_dev->sync_table[idx].ref_cnt));
 		spin_unlock_bh(&sync_dev->row_spinlocks[idx]);
 	}
 }
@@ -286,10 +286,7 @@ int cam_sync_merge(int32_t *sync_obj, uint32_t num_objs, int32_t *merged_obj)
 	int rc;
 	long idx = 0;
 	bool bit;
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
-/*wangjingkai@camera qcom case:04895864 Fix context release timing issue */
 	int i = 0;
-#endif
 
 	if (!sync_obj || !merged_obj) {
 		CAM_ERR(CAM_SYNC, "Invalid pointer(s)");
@@ -307,8 +304,6 @@ int cam_sync_merge(int32_t *sync_obj, uint32_t num_objs, int32_t *merged_obj)
 		return -EINVAL;
 	}
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
-/*wangjingkai@camera qcom case:04895864 Fix context release timing issue */
 	for (i = 0; i < num_objs; i++) {
 		rc = cam_sync_check_valid(sync_obj[i]);
 		if (rc) {
@@ -317,7 +312,6 @@ int cam_sync_merge(int32_t *sync_obj, uint32_t num_objs, int32_t *merged_obj)
 			return rc;
 		}
 	}
-#endif
 	do {
 		idx = find_first_zero_bit(sync_dev->bitmap, CAM_SYNC_MAX_OBJS);
 		if (idx >= CAM_SYNC_MAX_OBJS)
@@ -389,8 +383,6 @@ int cam_sync_destroy(int32_t sync_obj)
 	return cam_sync_deinit_object(sync_dev->sync_table, sync_obj);
 }
 
-#ifdef OPLUS_FEATURE_CAMERA_COMMON
-/*wangjingkai@camera qcom case:04895864 Fix context release timing issue */
 int cam_sync_check_valid(int32_t sync_obj)
 {
 	struct sync_table_row *row = NULL;
@@ -414,7 +406,7 @@ int cam_sync_check_valid(int32_t sync_obj)
 	}
 	return 0;
 }
-#endif
+
 int cam_sync_wait(int32_t sync_obj, uint64_t timeout_ms)
 {
 	unsigned long timeleft;
@@ -733,20 +725,10 @@ static int cam_sync_handle_deregister_user_payload(
 
 	list_for_each_entry_safe(user_payload_kernel, temp,
 				&row->user_payload_list, list) {
-#ifndef VENDOR_EDIT
 		if (user_payload_kernel->payload_data[0] ==
 				userpayload_info.payload[0] &&
 				user_payload_kernel->payload_data[1] ==
 				userpayload_info.payload[1]) {
-#else
-		/* wangyongwu@Camera , 2020/1/12 , merge qcom patch to fix UpdateDependency crash, case:04229960 */
-		if (user_payload_kernel->payload_data[0] ==
-				userpayload_info.payload[0]) {
-			CAM_ERR(CAM_SYNC,
-				"Info: deregister success for sync_obj %d payload[0] %llx",
-				sync_obj,
-				user_payload_kernel->payload_data[0]);
-#endif
 			list_del_init(&user_payload_kernel->list);
 			kfree(user_payload_kernel);
 		}

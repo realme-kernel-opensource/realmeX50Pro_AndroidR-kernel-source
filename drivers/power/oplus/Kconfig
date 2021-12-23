@@ -6,10 +6,53 @@ menuconfig OPPO_CHARGER
 	  Say Y here to enable OPPO charging system support
 
 if OPPO_CHARGER
-config OPPO_CHARGER_MTK
-	bool "OPPO charger on MTK"
+#ifdef VENDOR_EDIT /* Jianchao.Shi@BSP.CHG.Basic, 2018/01/12, sjc Add for charging */
+config OPLUS_SM8250_CHARGER
+	tristate "OPLUS SM8150 charger driver"
+	depends on MFD_SPMI_PMIC
 	help
-	  Say Y here to declare charging system is on MTK
+	  Enables support for the oplus charging framework
+
+config OPPO_CALL_MODE_SUPPORT
+	bool "OPPO call mode support"
+	help
+	  Say Y to include support
+
+config OPPO_SMART_CHARGER_SUPPORT
+	bool "OPPO smart charger support"
+	help
+	  Say Y to include support
+
+config OPPO_CHIP_SOC_NODE
+	bool "OPPO chip soc node"
+	help
+	  Say Y to include support
+
+config OPPO_SHORT_USERSPACE
+	bool "OPPO batt userspace"
+	help
+	 Say Y to include support
+
+config OPPO_RTC_DET_SUPPORT
+	tristate "OPPO RTC DET SUPPORT"
+	default n
+	depends on MFD_SPMI_PMIC
+	help
+	  Say Y to include support
+
+config OPPO_CHECK_CHARGERID_VOLT
+	tristate "OPPO CHECK CHARGERID VOLT"
+	default n
+	depends on MFD_SPMI_PMIC
+	help
+	  Say Y to include support
+
+config OPPO_SHIP_MODE_SUPPORT
+	tristate "OPPO_SHIP_MODE_SUPPORT"
+	default n
+	depends on MFD_SPMI_PMIC
+	help
+	  Say Y to include support
 	  
 config OPPO_SHORT_C_BATT_CHECK
 	bool "OPPO batt short "

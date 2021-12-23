@@ -1,9 +1,5 @@
 # SPDX-License-Identifier: GPL-2.0-only
 ccflags-y += -I$(src)
-#ifdef OPLUS_BUG_STABILITY
-#/*Deliang.Peng@PSW.MM.Display.LCD.Stable,2020-05-06 add for smmu key log */
-ccflags-y += -I$(srctree)/techpack/display/oplus
-#endif /*OPLUS_BUG_STABILITY*/
 
 msm_kgsl_core-y = \
 	kgsl.o \
@@ -19,17 +15,14 @@ msm_kgsl_core-y = \
 	kgsl_gmu_core.o \
 	kgsl_gmu.o \
 	kgsl_rgmu.o \
-	kgsl_hfi.o
+	kgsl_hfi.o \
+	kgsl_pool.o \
+	kgsl_reclaim.o
 
 msm_kgsl_core-$(CONFIG_QCOM_KGSL_IOMMU) += kgsl_iommu.o
 msm_kgsl_core-$(CONFIG_DEBUG_FS) += kgsl_debugfs.o
 msm_kgsl_core-$(CONFIG_SYNC_FILE) += kgsl_sync.o
 msm_kgsl_core-$(CONFIG_COMPAT) += kgsl_compat.o
-msm_kgsl_core-$(CONFIG_QCOM_KGSL_PROCESS_RECLAIM) += kgsl_reclaim.o
-
-ifndef CONFIG_QCOM_KGSL_USE_SHMEM
-	msm_kgsl_core-y += kgsl_pool.o
-endif
 
 msm_adreno-y += \
 	adreno_ioctl.o \
@@ -63,7 +56,3 @@ msm_adreno-objs = $(msm_adreno-y)
 
 obj-$(CONFIG_QCOM_KGSL) += msm_kgsl_core.o
 obj-$(CONFIG_QCOM_KGSL) += msm_adreno.o
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-#/* Kui.Zhang@TEC.Kernel.Performance, 2019-03-13, kgsl try reserved area in critical*/
-obj-$(CONFIG_VIRTUAL_RESERVE_MEMORY) += kgsl_reserved_area.o
-#endif /*defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)*/

@@ -1670,7 +1670,7 @@ static inline const char *_kgsl_context_comm(struct kgsl_context *context)
 #define pr_fault(_d, _c, fmt, args...) \
 		dev_err((_d)->dev, "%s[%d]: " fmt, \
 		_kgsl_context_comm((_c)->context), \
-		pid_nr((_c)->context->proc_priv->pid), ##args)
+		(_c)->context->proc_priv->pid, ##args)
 
 
 static void adreno_fault_header(struct kgsl_device *device,
@@ -2162,11 +2162,6 @@ static int dispatcher_do_fault(struct adreno_device *adreno_dev)
 	if (gx_on)
 		adreno_readreg64(adreno_dev, ADRENO_REG_CP_RB_BASE,
 			ADRENO_REG_CP_RB_BASE_HI, &base);
-
-	#if defined(OPLUS_FEATURE_GPU_MINIDUMP)
-	// MeiDongting@MULTIMEIDA.FEATURE.GPU.MINIDUMP, 2020/04/06, Add for OPPO gpu mini dump
-	device->snapshotfault = fault;
-	#endif /*OPLUS_FEATURE_GPU_MINIDUMP*/
 
 	/*
 	 * Force the CP off for anything but a hard fault to make sure it is

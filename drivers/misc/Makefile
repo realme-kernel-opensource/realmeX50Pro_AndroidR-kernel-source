@@ -75,24 +75,7 @@ obj-$(CONFIG_OKL4_LINK_SHBUF)    += okl4-link-shbuf.o
 obj-$(CONFIG_WIGIG_SENSING_SPI)	+= wigig_sensing.o
 obj-$(CONFIG_QTI_MAXIM_FAN_CONTROLLER) += max31760.o
 obj-$(CONFIG_QTI_XR_SMRTVWR_MISC) += qxr-stdalonevwr.o
-
-# ifdef VENDOR_EDIT
-#Qicai.Gu@PSW.BSP.TP, 2016/06/22, Add for support press sensor
-obj-$(CONFIG_CS_F61_NDT) 	+= cs_press/
-# endif /* VENDOR_EDIT */
-
-#ifdef OPLUS_FEATURE_TP_BASIC
-#Zengpeng.Chen@BSP.TP.Misc, 2020/08/06, Add for support color ctrl
-obj-$(CONFIG_COLOR_CTRL) 	+= colorctrl/
-#endif /* OPLUS_FEATURE_TP_BASIC */
-
+obj-$(CONFIG_FPR_FPC)		+= fpr_FingerprintCard/
 #ifdef VENDOR_EDIT//Qingjun.Wang@BSP.Haptic,add 2020/03/17 for vib aw8697
 obj-$(CONFIG_AW8697_HAPTIC)     += aw8697_haptic/
-#endif
-
-obj-$(CONFIG_FPR_FPC)		+= fpr_FingerprintCard/
-
-#ifdef VENDOR_EDIT
-#Fuchun.Liao@BSP.CHG.Basic, 2018/11/06, Add for oppo rf cable monitor
-obj-$(CONFIG_OPPO_RF_CABLE_MONITOR)	+= oppo_rf_cable_monitor.o
 #endif

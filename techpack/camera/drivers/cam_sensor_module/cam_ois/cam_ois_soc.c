@@ -12,9 +12,6 @@
 
 #include "cam_ois_soc.h"
 #include "cam_debug_util.h"
-#ifndef VENDOR_EDIT
-#define VENDOR_EDIT
-#endif
 #include "oplus_cam_ois_soc.h"
 
 /**

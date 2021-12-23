@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -82,7 +82,20 @@ static int __cam_jpeg_ctx_release_dev_in_acquired(struct cam_context *ctx,
 
 	return rc;
 }
+#ifndef VENDOR_EDIT
+static int __cam_jpeg_ctx_dump_dev_in_acquired(
+	struct cam_context      *ctx,
+	struct cam_dump_req_cmd *cmd)
+{
+	int rc;
 
+	rc = cam_context_dump_dev_to_hw(ctx, cmd);
+	if (rc)
+		CAM_ERR(CAM_JPEG, "Failed to dump device, rc=%d", rc);
+
+	return rc;
+}
+#endif
 static int __cam_jpeg_ctx_flush_dev_in_acquired(struct cam_context *ctx,
 	struct cam_flush_dev_cmd *cmd)
 {
@@ -145,6 +158,9 @@ static struct cam_ctx_ops
 			.config_dev = __cam_jpeg_ctx_config_dev_in_acquired,
 			.stop_dev = __cam_jpeg_ctx_stop_dev_in_acquired,
 			.flush_dev = __cam_jpeg_ctx_flush_dev_in_acquired,
+#ifndef VENDOR_EDIT
+			.dump_dev = __cam_jpeg_ctx_dump_dev_in_acquired,
+#endif
 		},
 		.crm_ops = { },
 		.irq_ops = __cam_jpeg_ctx_handle_buf_done_in_acquired,

@@ -2961,12 +2961,15 @@ static void dwc3_resume_work(struct work_struct *w)
 	/* Check speed and Type-C polarity values in order to configure PHY */
 	if (!eud_connected && edev && extcon_get_state(edev, extcon_id)) {
 		dwc->maximum_speed = dwc->max_hw_supp_speed;
+		dwc->gadget.max_speed = dwc->maximum_speed;
 
 		ret = extcon_get_property(edev, extcon_id,
 				EXTCON_PROP_USB_SS, &val);
 
-		if (!ret && val.intval == 0)
+		if (!ret && val.intval == 0) {
 			dwc->maximum_speed = USB_SPEED_HIGH;
+			dwc->gadget.max_speed = dwc->maximum_speed;
+		}
 
 		if (mdwc->override_usb_speed &&
 			mdwc->override_usb_speed <= dwc->maximum_speed) {
@@ -2974,6 +2977,7 @@ static void dwc3_resume_work(struct work_struct *w)
 			dwc->gadget.max_speed = dwc->maximum_speed;
 			dbg_event(0xFF, "override_speed",
 					mdwc->override_usb_speed);
+			mdwc->override_usb_speed = 0;
 		}
 
 		dbg_event(0xFF, "speed", dwc->maximum_speed);
@@ -4541,7 +4545,6 @@ static int dwc3_msm_gadget_vbus_draw(struct dwc3_msm *mdwc, unsigned int mA)
 
 #ifdef VENDOR_EDIT
 	/* Jianchao.Shi@BSP.CHG.Basic, 2017/05/04, sjc Add for charging */
-	dev_info(mdwc->dev, "Avail curr from USB = %u, pre max_power = %u\n", mA, mdwc->max_power);
 	if (mA == 0 || mA == 2) {
 		return 0;
 	}

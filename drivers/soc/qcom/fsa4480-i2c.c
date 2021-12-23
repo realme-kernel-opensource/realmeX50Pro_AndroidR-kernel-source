@@ -43,12 +43,6 @@
 #endif /* OPLUS_ARCH_EXTENDS */
 #define FSA4480_RESET           0x1E
 
-#ifdef OPLUS_ARCH_EXTENDS
-/*Jianfeng.Qiu@PSW.MM.AudioDriver.HeadsetDet, 2019/07/31, Add for log*/
-#undef dev_dbg
-#define dev_dbg dev_info
-#endif /* OPLUS_ARCH_EXTENDS */
-
 struct fsa4480_priv {
 	struct regmap *regmap;
 	struct device *dev;
@@ -78,10 +72,6 @@ static const struct regmap_config fsa4480_regmap_config = {
 };
 
 static const struct fsa4480_reg_val fsa_reg_i2c_defaults[] = {
-        #ifdef OPLUS_BUG_STABILITY
-	/*Jianfeng.Qiu@MULTIMEDIA.AUDIODRIVER.CODEC, 2020/12/17, Add for reset control reg*/
-	{FSA4480_SWITCH_CONTROL, 0x18},
-	#endif /* OPLUS_BUG_STABILITY */
 	{FSA4480_SLOW_L, 0x00},
 	{FSA4480_SLOW_R, 0x00},
 	{FSA4480_SLOW_MIC, 0x00},
@@ -188,11 +178,6 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 	dev_dbg(dev, "%s: setting GPIOs active = %d\n",
 		__func__, mode.intval != POWER_SUPPLY_TYPEC_NONE);
 
-	#ifdef OPLUS_ARCH_EXTENDS
-	/*Jianfeng.Qiu@PSW.MM.AudioDriver.HeadsetDet, 2019/07/31, Add for log*/
-	dev_info(dev, "%s: USB mode %d\n", __func__, mode.intval);
-	#endif /* OPLUS_ARCH_EXTENDS */
-
 	switch (mode.intval) {
 	/* add all modes FSA should notify for in here */
 	case POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER:
@@ -206,7 +191,6 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 		dev_info(dev, "%s: set reg[0x%x] done.\n", __func__, FSA4480_FUN_EN);
 
 		regmap_read(fsa_priv->regmap, FSA4480_JACK_STATUS, &jack_status);
-		dev_info(dev, "%s: reg[0x%x]=0x%x.\n", __func__, FSA4480_JACK_STATUS, jack_status);
 		if (jack_status & 0x2) {
 			//for 3 pole, mic switch to SBU2
 			dev_info(dev, "%s: set mic to sbu2 for 3 pole.\n", __func__);
@@ -215,9 +199,7 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 		}
 
 		regmap_read(fsa_priv->regmap, FSA4480_SWITCH_STATUS0, &switch_status);
-		dev_info(dev, "%s: reg[0x%x]=0x%x.\n", __func__, FSA4480_SWITCH_STATUS0, switch_status);
 		regmap_read(fsa_priv->regmap, FSA4480_SWITCH_STATUS1, &switch_status);
-		dev_info(dev, "%s: reg[0x%x]=0x%x.\n", __func__, FSA4480_SWITCH_STATUS1, switch_status);
 		#endif /* OPLUS_ARCH_EXTENDS */
 
 		/* notify call chain on event */
@@ -228,7 +210,6 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 		 * Add for fsa4480 headset detection interrupt.
 		 */
 		if (gpio_is_valid(fsa_priv->hs_det_pin)) {
-			dev_info(dev, "%s: set hs_det_pin to low.\n", __func__);
 			gpio_direction_output(fsa_priv->hs_det_pin, 0);
 		}
 		#endif /* OPLUS_ARCH_EXTENDS */
@@ -239,7 +220,6 @@ static int fsa4480_usbc_analog_setup_switches(struct fsa4480_priv *fsa_priv)
 		 * Add for fsa4480 headset detection interrupt.
 		 */
 		if (gpio_is_valid(fsa_priv->hs_det_pin)) {
-			dev_info(dev, "%s: set hs_det_pin to high.\n", __func__);
 			gpio_direction_output(fsa_priv->hs_det_pin, 1);
 		}
 		#endif /* OPLUS_ARCH_EXTENDS */
@@ -300,8 +280,6 @@ int fsa4480_reg_notifier(struct notifier_block *nb,
 			__func__, rc);
 	} else if ((mode.intval == POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER)
 			|| (mode.intval == POWER_SUPPLY_TYPEC_NONE)) {
-		dev_info(fsa_priv->dev, "%s: initial state: supply mode %d, usbc mode %d\n",
-			__func__, mode.intval, fsa_priv->usbc_mode.counter);
 		atomic_set(&(fsa_priv->usbc_mode), mode.intval);
 	}
 	#endif /* OPLUS_ARCH_EXTENDS */
@@ -403,11 +381,6 @@ int fsa4480_switch_event(struct device_node *node,
 	if (!fsa_priv->regmap)
 		return -EINVAL;
 
-	#ifdef OPLUS_ARCH_EXTENDS
-	/*Jianfeng.Qiu@PSW.MM.AudioDriver.HeadsetDet, 2019/07/31, Add for log*/
-	pr_info("%s - switch event: %d\n", __func__, event);
-	#endif /* OPLUS_ARCH_EXTENDS */
-
 	switch (event) {
 	case FSA_MIC_GND_SWAP:
 		regmap_read(fsa_priv->regmap, FSA4480_SWITCH_CONTROL,
@@ -417,10 +390,6 @@ int fsa4480_switch_event(struct device_node *node,
 		else
 			switch_control = 0x7;
 		fsa4480_usbc_update_settings(fsa_priv, switch_control, 0x9F);
-		#ifdef OPLUS_ARCH_EXTENDS
-		/*Xiaoke.Zhi@PSW.MM.AudioDriver.Headset, 2018/11/07, Add audio switch fsa4480 debug msg*/
-		pr_err("fsa4480 fsa_mic_gnd_swap.\n");
-		#endif /* OPLUS_ARCH_EXTENDS */
 		break;
 	case FSA_USBC_ORIENTATION_CC1:
 		#ifndef OPLUS_ARCH_EXTENDS
@@ -512,10 +481,7 @@ static int fsa4480_probe(struct i2c_client *i2c,
 {
 	struct fsa4480_priv *fsa_priv;
 	int rc = 0;
-	#ifdef OPLUS_ARCH_EXTENDS
-	/*Xiaoke.Zhi@PSW.MM.AudioDriver.Headset, 2018/11/07, Add audio switch fsa4480 debug msg*/
-	pr_err("%s enter fsa4480_probe\n", __func__);
-	#endif /* OPLUS_ARCH_EXTENDS */
+
 	fsa_priv = devm_kzalloc(&i2c->dev, sizeof(*fsa_priv),
 				GFP_KERNEL);
 	if (!fsa_priv)

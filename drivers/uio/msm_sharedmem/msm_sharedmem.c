@@ -82,7 +82,7 @@ static void setup_shared_ram_perms(u32 client_id, phys_addr_t addr, u32 size,
 	#ifndef OPLUS_BUG_STABILITY
 	//Zhengpeng.Tan@NW.MDM.NV.892767, 2016/11/30
 	//add for nv backup and restore
-	//if (client_id != MPSS_RMTS_CLIENT_ID)
+	if (client_id != MPSS_RMTS_CLIENT_ID)
 	#else /* OPLUS_BUG_STABILITY */
 	if ((client_id != MPSS_RMTS_CLIENT_ID) && (client_id != MPSS_OEMBACK_CLIENT_ID))
 	#endif /* OPLUS_BUG_STABILITY */

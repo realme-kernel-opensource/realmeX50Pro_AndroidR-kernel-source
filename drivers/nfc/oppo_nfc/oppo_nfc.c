@@ -8,7 +8,7 @@
 #include <linux/soc/qcom/smem.h>
 #include <linux/seq_file.h>
 #include <linux/platform_device.h>
-#include <soc/oppo/oppo_project.h>
+#include <soc/oplus/oppo_project.h>
 #include <linux/io.h>
 #include <stdbool.h>
 

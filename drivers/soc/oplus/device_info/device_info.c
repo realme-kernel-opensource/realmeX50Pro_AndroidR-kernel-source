@@ -14,8 +14,8 @@
 
 #include <linux/module.h>
 #include <linux/proc_fs.h>
-#include <soc/oppo/device_info.h>
-#include <soc/oppo/oppo_project.h>
+#include <soc/oplus/device_info.h>
+#include <soc/oplus/oppo_project.h>
 #include <linux/slab.h>
 #include <linux/seq_file.h>
 #include <linux/fs.h>

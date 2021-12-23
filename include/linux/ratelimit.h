@@ -6,19 +6,8 @@
 #include <linux/sched.h>
 #include <linux/spinlock.h>
 
-#ifdef OPLUS_BUG_STABILITY
-//wen.luo@bsp.kernel.stability, 2020/6/18 ,debug load not limit
-#ifdef CONFIG_SLUB_DEBUG_ON
-#define DEFAULT_RATELIMIT_INTERVAL	(0 * HZ)
-#define DEFAULT_RATELIMIT_BURST		20000
-#else
 #define DEFAULT_RATELIMIT_INTERVAL	(5 * HZ)
 #define DEFAULT_RATELIMIT_BURST		10
-#endif /*CONFIG_SLUB_DEBUG_ON*/
-#else
-#define DEFAULT_RATELIMIT_INTERVAL	(5 * HZ)
-#define DEFAULT_RATELIMIT_BURST		10
-#endif /*OPLUS_BUG_STABILITY*/
 
 /* issue num suppressed message on exit */
 #define RATELIMIT_MSG_ON_RELEASE	BIT(0)

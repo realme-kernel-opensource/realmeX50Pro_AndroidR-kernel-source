@@ -48,10 +48,6 @@
 #include <soc/qcom/scm.h>
 
 #include <acpi/ghes.h>
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-#include <linux/oppo_iomonitor/iomonitor.h>
-#endif
 
 struct fault_info {
 	int	(*fn)(unsigned long addr, unsigned int esr,
@@ -571,10 +567,6 @@ done:
 		 */
 		if (major) {
 			tsk->maj_flt++;
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add fs daily info*/
-			iomonitor_update_fs_stats(FS_MAJOR_FAULT, 1);
-#endif
 			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, regs,
 				      addr);
 		} else {

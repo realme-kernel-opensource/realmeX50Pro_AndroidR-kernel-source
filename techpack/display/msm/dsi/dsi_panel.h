@@ -205,10 +205,6 @@ struct dsi_panel_oppo_privite {
 	int bl_remap_count;
 	bool is_pxlw_iris5;
 	bool bl_interpolate_nosub;
-/* Gang.Wang@MULTIMEDIA.DISPLAY.LCD.Feature,2020-10-09 optimize osc adaptive */
-	bool is_osc_support;
-	u32 osc_clk_mode0_rate;
-	u32 osc_clk_mode1_rate;
 };
 #endif /* OPLUS_BUG_STABILITY */
 

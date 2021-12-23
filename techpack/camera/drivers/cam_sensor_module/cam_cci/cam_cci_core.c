@@ -43,12 +43,9 @@ static void cam_cci_flush_queue(struct cci_device *cci_dev,
 	void __iomem *base = soc_info->reg_map[0].mem_base;
 
 	cam_io_w_mb(1 << master, base + CCI_HALT_REQ_ADDR);
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 	if (!cci_dev->cci_master_info[master].status)
 		reinit_completion(&cci_dev->cci_master_info[master]
 			.reset_complete);
-#endif
 	rc = wait_for_completion_timeout(
 		&cci_dev->cci_master_info[master].reset_complete, CCI_TIMEOUT);
 	if (rc < 0) {
@@ -58,10 +55,8 @@ static void cam_cci_flush_queue(struct cci_device *cci_dev,
 
 		/* Set reset pending flag to true */
 		cci_dev->cci_master_info[master].reset_pending = true;
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 		cci_dev->cci_master_info[master].status = 0;
-#endif
+
 		/* Set proper mask to RESET CMD address based on MASTER */
 		if (master == MASTER_0)
 			cam_io_w_mb(CCI_M0_RESET_RMSK,
@@ -76,10 +71,7 @@ static void cam_cci_flush_queue(struct cci_device *cci_dev,
 			CCI_TIMEOUT);
 		if (rc <= 0)
 			CAM_ERR(CAM_CCI, "wait failed %d", rc);
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 		cci_dev->cci_master_info[master].status = 0;
-#endif
 	}
 }
 
@@ -141,13 +133,10 @@ static int32_t cam_cci_validate_queue(struct cci_device *cci_dev,
 			return rc;
 		}
 		rc = cci_dev->cci_master_info[master].status;
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 		if (rc < 0) {
 			CAM_ERR(CAM_CCI, "Failed rc %d", rc);
 			cci_dev->cci_master_info[master].status = 0;
 		}
-#endif
 	}
 
 	return rc;
@@ -204,6 +193,9 @@ static void cam_cci_dump_registers(struct cci_device *cci_dev,
 	uint32_t reg_offset = 0;
 	void __iomem *base = cci_dev->soc_info.reg_map[0].mem_base;
 
+	CAM_INFO(CAM_CCI, "**** CCI:%d register dump ****",
+		cci_dev->soc_info->index);
+
 	/* CCI Top Registers */
 	CAM_INFO(CAM_CCI, "****CCI TOP Registers ****");
 	for (i = 0; i < DEBUG_TOP_REG_COUNT; i++) {
@@ -217,6 +209,9 @@ static void cam_cci_dump_registers(struct cci_device *cci_dev,
 	CAM_INFO(CAM_CCI, "****CCI MASTER %d Registers ****",
 		master);
 	for (i = 0; i < DEBUG_MASTER_REG_COUNT; i++) {
+		if ((i * 4) == 0x18)
+			continue;
+
 		reg_offset = DEBUG_MASTER_REG_START + master*0x100 + i * 4;
 		read_val = cam_io_r_mb(base + reg_offset);
 		CAM_INFO(CAM_CCI, "offset = 0x%X value = 0x%X",
@@ -266,18 +261,15 @@ static uint32_t cam_cci_wait(struct cci_device *cci_dev,
 #endif
 		CAM_ERR(CAM_CCI, "wait for queue: %d", queue);
 		if (rc == 0) {
-		    rc = -ETIMEDOUT;
-		    cam_cci_flush_queue(cci_dev, master);
-		    return rc;
-                }
+			rc = -ETIMEDOUT;
+			cam_cci_flush_queue(cci_dev, master);
+			return rc;
+		}
 	}
 	rc = cci_dev->cci_master_info[master].status;
 	if (rc < 0) {
 		CAM_ERR(CAM_CCI, "failed rc %d", rc);
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 		cci_dev->cci_master_info[master].status = 0;
-#endif
 		return rc;
 	}
 
@@ -943,12 +935,12 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 	mutex_unlock(&cci_dev->cci_master_info[master].mutex);
 
 	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[queue]);
+	reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
 	/*
 	 * Call validate queue to make sure queue is empty before starting.
 	 * If this call fails, don't proceed with i2c_read call. This is to
 	 * avoid overflow / underflow of queue
 	 */
-        reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
 	rc = cam_cci_validate_queue(cci_dev,
 		cci_dev->cci_i2c_queue_info[master][queue].max_queue_size - 1,
 		master, queue);
@@ -1050,8 +1042,6 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 			goto rel_mutex_q;
 		}
 
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 		if (cci_dev->cci_master_info[master].status) {
 			CAM_ERR(CAM_CCI, "Error with Salve: 0x%x",
 				(c_ctrl->cci_info->sid << 1));
@@ -1059,7 +1049,6 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 			cci_dev->cci_master_info[master].status = 0;
 			goto rel_mutex_q;
 		}
-#endif
 
 		read_words = cam_io_r_mb(base +
 			CCI_I2C_M0_READ_BUF_LEVEL_ADDR + master * 0x100);
@@ -1142,8 +1131,6 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 				goto rel_mutex_q;
 			}
 
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 			if (cci_dev->cci_master_info[master].status) {
 				CAM_ERR(CAM_CCI, "Error with Slave 0x%x",
 					(c_ctrl->cci_info->sid << 1));
@@ -1151,7 +1138,6 @@ static int32_t cam_cci_burst_read(struct v4l2_subdev *sd,
 				cci_dev->cci_master_info[master].status = 0;
 				goto rel_mutex_q;
 			}
-#endif
 			break;
 		}
 	}
@@ -1231,7 +1217,7 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
 	mutex_unlock(&cci_dev->cci_master_info[master].mutex);
 
 	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[queue]);
-        reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
+	reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
 	/*
 	 * Call validate queue to make sure queue is empty before starting.
 	 * If this call fails, don't proceed with i2c_read call. This is to
@@ -1339,8 +1325,6 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
 		rc = 0;
 	}
 
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 	if (cci_dev->cci_master_info[master].status) {
 		CAM_ERR(CAM_CCI, "ERROR with Slave 0x%x:",
 			(c_ctrl->cci_info->sid << 1));
@@ -1348,7 +1332,6 @@ static int32_t cam_cci_read(struct v4l2_subdev *sd,
 		cci_dev->cci_master_info[master].status = 0;
 		goto rel_mutex_q;
 	}
-#endif
 
 	read_words = cam_io_r_mb(base +
 		CCI_I2C_M0_READ_BUF_LEVEL_ADDR + master * 0x100);
@@ -1444,7 +1427,8 @@ static int32_t cam_cci_i2c_write(struct v4l2_subdev *sd,
 		goto ERROR;
 	}
 	mutex_unlock(&cci_dev->cci_master_info[master].mutex);
-        reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
+
+	reinit_completion(&cci_dev->cci_master_info[master].report_q[queue]);
 	/*
 	 * Call validate queue to make sure queue is empty before starting.
 	 * If this call fails, don't proceed with i2c_write call. This is to
@@ -1607,11 +1591,10 @@ static int32_t cam_cci_read_bytes(struct v4l2_subdev *sd,
 	 * THRESHOLD irq's, we reinit the threshold wait before
 	 * we load the burst read cmd.
 	 */
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
+	mutex_lock(&cci_dev->cci_master_info[master].mutex_q[QUEUE_1]);
 	reinit_completion(&cci_dev->cci_master_info[master].rd_done);
-#endif
 	reinit_completion(&cci_dev->cci_master_info[master].th_complete);
+	mutex_unlock(&cci_dev->cci_master_info[master].mutex_q[QUEUE_1]);
 
 	CAM_DBG(CAM_CCI, "Bytes to read %u", read_bytes);
 	do {
@@ -1752,10 +1735,7 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 {
 	int32_t rc = 0;
 	struct cci_device *cci_dev = v4l2_get_subdevdata(sd);
-#ifdef VENDOR_EDIT
-/*Jindian.Guan@Camera.Drv, 2020/01/09, modify for cci timeout case:04398317 */
 	enum cci_i2c_master_t master = MASTER_MAX;
-	CAM_DBG(CAM_CCI, "cmd %d", cci_ctrl->cmd);
 
 	if (!cci_dev) {
 		CAM_ERR(CAM_CCI, "CCI_DEV IS NULL");
@@ -1777,8 +1757,8 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 		CAM_WARN(CAM_CCI, "CCI hardware is resetting");
 		return -EAGAIN;
 	}
-	CAM_DBG(CAM_CCI, "master = %d", master);
-#endif
+	CAM_DBG(CAM_CCI, "master = %d, cmd = %d", master, cci_ctrl->cmd);
+
 	switch (cci_ctrl->cmd) {
 	case MSM_CCI_INIT:
 		mutex_lock(&cci_dev->init_mutex);
@@ -1791,9 +1771,7 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 		mutex_unlock(&cci_dev->init_mutex);
 		break;
 	case MSM_CCI_I2C_READ:
-		mutex_lock(&cci_dev->init_mutex);
 		rc = cam_cci_read_bytes(sd, cci_ctrl);
-		mutex_unlock(&cci_dev->init_mutex);
 		break;
 	case MSM_CCI_I2C_WRITE:
 	case MSM_CCI_I2C_WRITE_SEQ:
@@ -1801,9 +1779,7 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 	case MSM_CCI_I2C_WRITE_SYNC:
 	case MSM_CCI_I2C_WRITE_ASYNC:
 	case MSM_CCI_I2C_WRITE_SYNC_BLOCK:
-		mutex_lock(&cci_dev->init_mutex);
 		rc = cam_cci_write(sd, cci_ctrl);
-		mutex_unlock(&cci_dev->init_mutex);
 		break;
 	case MSM_CCI_GPIO_WRITE:
 		break;
@@ -1819,7 +1795,6 @@ int32_t cam_cci_core_cfg(struct v4l2_subdev *sd,
 
 	return rc;
 }
-
 
 #define MAX_WRITE_ARRAY_SIZE   300
 static struct cam_cci_ctrl cci_ctrl_interface;
@@ -1837,11 +1812,6 @@ int32_t cam_cci_read_packet(struct cam_cci_ctrl *cci_ctrl,
 	cci_ctrl->cfg.cci_i2c_read_cfg.data_type = CAMERA_SENSOR_I2C_TYPE_BYTE;
 	cci_ctrl->cfg.cci_i2c_read_cfg.data = data;
 	cci_ctrl->cfg.cci_i2c_read_cfg.num_byte = count;
-	//CAM_ERR(CAM_SENSOR, "cam_cci_read_packet addr = 0x%x,data=0x%x,count=%d,rc=%d",
-	//	addr,data[0],count,rc);
-	//for(int i=0;i<count;i++){
-	//	CAM_ERR(CAM_SENSOR, "data before read data= 0x%x,index=%d",data[i],i);
-	//}
 
 	rc = cci_ctrl->status;
 	return rc;
@@ -1866,8 +1836,6 @@ static int32_t cam_cci_write_packet(
     for(i=0; i<count; i++){
         write_regarray[i].reg_addr = addr+i;
         write_regarray[i].reg_data = data[i];
-        //CAM_ERR(CAM_SENSOR, "cam_cci_write_packet addr = 0x%x,data= 0x%x,count=%d",
-        //    addr,data[i],count);
     }
     cci_ctrl->cfg.cci_i2c_write_cfg.reg_setting =
         write_regarray;
@@ -1880,11 +1848,6 @@ static int32_t cam_cci_write_packet(
         return rc;
     }
     rc = cci_ctrl->status;
-    //if (write_setting->delay > 20)
-    //    msleep(write_setting->delay);
-    //else if (write_setting->delay)
-    //    usleep_range(write_setting->delay * 1000, (write_setting->delay
-    //        * 1000) + 1000);
 
     return rc;
 }
@@ -1945,10 +1908,6 @@ int32_t cam_cci_control_interface(void* control)
         }
         break;
     case CAMERA_CCI_WRITE:
-        //if(pControl->count>1)
-        //    cci_ctrl_interface.cmd = MSM_CCI_I2C_WRITE_SEQ;
-        //else
-        //    cci_ctrl_interface.cmd = MSM_CCI_I2C_WRITE_SYNC_BLOCK;
         cci_ctrl_interface.cmd = MSM_CCI_I2C_WRITE;
         //pack write data
         cam_cci_write_packet(&cci_ctrl_interface,

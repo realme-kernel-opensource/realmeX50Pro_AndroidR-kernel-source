@@ -394,27 +394,11 @@ out:
 	return ret;
 }
 
-int cmdcmp(const char *tmp1, const char *tmp2, size_t count)
-{
-	int i;
-	for (i = 0; i < count; i++) {
-		if (tmp1[i] != tmp2[i]) {
-			return -1;
-		}
-	}
-	return 0;
-}
-
 static ssize_t nfc_write(struct file *filp, const char __user *buf,
 				size_t count, loff_t *offset)
 {
 	struct nqx_dev *nqx_dev = filp->private_data;
 	char *tmp = NULL;
-	char wakeup_cmd[1] = {0};
-	const char on_unlocked[] = {0x20, 0x09, 0x01, 0x00};
-	const char on_locked[] = {0x20, 0x09, 0x01, 0x02};
-	const char off_locked[] = {0x20, 0x09, 0x01, 0x03};
-	const char polling_disabled[] = {0x20, 0x02, 0x04, 0x01, 0x02, 0x01, 0x00};
 	int ret = 0;
 
 	if (!nqx_dev) {
@@ -436,22 +420,6 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 		goto out;
 	}
 
-	if (cmdcmp(tmp, on_unlocked, sizeof(on_unlocked)) == 0
-		||cmdcmp(tmp, on_locked, sizeof(on_locked)) == 0
-		||cmdcmp(tmp, off_locked, sizeof(off_locked)) == 0
-		||cmdcmp(tmp, polling_disabled, sizeof(polling_disabled)) == 0) {
-
-		ret = i2c_master_send(nqx_dev->client, wakeup_cmd, 1);
-		if (ret < 0) {
-		    dev_err(&nqx_dev->client->dev,
-		        "%s: failed to write wakeup_cmd %d\n", __func__, ret);
-		} else {
-		    dev_err(&nqx_dev->client->dev,
-		        "%s: succeed to write wakeup_cmd\n", __func__);
-		}
-		usleep_range(5000, 5100);
-	}
-
 	ret = i2c_master_send(nqx_dev->client, tmp, count);
 	if (ret != count) {
 		dev_err(&nqx_dev->client->dev,
@@ -465,7 +433,6 @@ static ssize_t nfc_write(struct file *filp, const char __user *buf,
 			__func__, iminor(file_inode(filp)),
 			tmp[0], tmp[1], tmp[2]);
 #endif
-
 	usleep_range(1000, 1100);
 out_free:
 	kfree(tmp);

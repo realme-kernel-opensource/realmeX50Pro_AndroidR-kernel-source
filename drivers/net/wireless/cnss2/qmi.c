@@ -5,13 +5,6 @@
 #include <linux/module.h>
 #include <linux/soc/qcom/qmi.h>
 
-#ifdef OPLUS_FEATURE_WIFI_BDF
-//
-//
-#include <soc/oppo/oppo_project.h>
-#include <linux/fs.h>
-#endif /* OPLUS_FEATURE_WIFI_BDF */
-
 #include "bus.h"
 #include "debug.h"
 #include "main.h"
@@ -531,40 +524,6 @@ static int cnss_get_bdf_file_name(struct cnss_plat_data *plat_priv,
 	return ret;
 }
 
-#ifdef OPLUS_FEATURE_WIFI_BDF
-// check if read bdf is not complete through compare the size with odm/etc/wifi bdf file
-// return 0 if everything ok, otherwise return a non-zero value
-int check_bdf_size(unsigned int download_bdf_size, char* bdf_file_name) {
-	char str[48];
-	struct kstat* stat = NULL;
-	int ret = 0;
-
-	snprintf(str, sizeof(str), "%s%s", "/odm/etc/wifi/", bdf_file_name);
-	cnss_pr_dbg("vendor file name: %s", str);
-	stat = (struct kstat*) kzalloc(sizeof(struct kstat), GFP_KERNEL);
-	if (!stat)
-		return -ENOMEM;
-
-	ret = vfs_stat(str, stat);
-	if (ret < 0) {
-		cnss_pr_dbg("stat: %s fail %d", str, ret);
-		if (-ENOENT == ret) {
-			ret = 0;
-		}
-		goto out;
-	}
-
-	cnss_pr_dbg("dl size: %d, stat size: %d", download_bdf_size, stat->size);
-	if (download_bdf_size < stat->size) {
-		ret = -1;
-	}
-
-out:
-	kfree(stat);
-	return ret;
-}
-#endif /* OPLUS_FEATURE_WIFI_BDF */
-
 int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 				 u32 bdf_type)
 {
@@ -576,11 +535,6 @@ int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 	const u8 *temp;
 	unsigned int remaining;
 	int ret = 0;
-#ifdef OPLUS_FEATURE_WIFI_BDF
-//Laixin@CONNECTIVITY.WIFI.BASE.HARDWARE.1065227 , 2019/10/17
-//Modify for: multi projects using different bdf
-	int loading_bdf_retry_cnt = 5;
-#endif /* OPLUS_FEATURE_WIFI_BDF */
 
 	cnss_pr_dbg("Sending BDF download message, state: 0x%lx, type: %d\n",
 		    plat_priv->driver_state, bdf_type);
@@ -599,20 +553,13 @@ int cnss_wlfw_bdf_dnld_send_sync(struct cnss_plat_data *plat_priv,
 				     filename, sizeof(filename));
 	if (ret > 0) {
 		temp = DUMMY_BDF_FILE_NAME;
-		remaining = MAX_FIRMWARE_NAME_LEN;
+		remaining = strlen(DUMMY_BDF_FILE_NAME) + 1;
 		goto bypass_bdf;
 	} else if (ret < 0) {
 		goto err_req_fw;
 	}
 
-#ifdef OPLUS_FEATURE_WIFI_BDF
-//Laixin@CONNECTIVITY.WIFI.BASE.HARDWARE.1065227 , 2019/10/17
-//Modify for: multi projects using different bdf
-request_bdf:
-	ret = request_firmware_no_cache(&fw_entry, filename, &plat_priv->plat_dev->dev);
-#else /* OPLUS_FEATURE_WIFI_BDF */
 	ret = request_firmware(&fw_entry, filename, &plat_priv->plat_dev->dev);
-#endif /* OPLUS_FEATURE_WIFI_BDF */
 	if (ret) {
 		cnss_pr_err("Failed to load BDF: %s\n", filename);
 		goto err_req_fw;
@@ -623,21 +570,6 @@ request_bdf:
 
 bypass_bdf:
 	cnss_pr_dbg("Downloading BDF: %s, size: %u\n", filename, remaining);
-
-#ifdef OPLUS_FEATURE_WIFI_BDF
-//Laixin@CONNECTIVITY.WIFI.BASE.HARDWARE.1065227 , 2019/10/17
-//Modify for: multi projects using different bdf
-	if (strncmp(filename, "bdwlan", 6) == 0
-		&& check_bdf_size(remaining, filename) && loading_bdf_retry_cnt > 0) {
-		loading_bdf_retry_cnt -= 1;
-		cnss_pr_dbg("bdf size is too small, maybe bdf is under transfer, retry loading..");
-		// sleep 400 ms
-		msleep_interruptible(400);
-		goto request_bdf;
-	}
-	// reset counter
-	loading_bdf_retry_cnt = 5;
-#endif /* OPLUS_FEATURE_WIFI_BDF */
 
 	while (remaining) {
 		req->valid = 1;
@@ -2040,21 +1972,17 @@ static void cnss_wlfw_respond_get_info_ind_cb(struct qmi_handle *qmi_wlfw,
 	struct cnss_plat_data *plat_priv =
 		container_of(qmi_wlfw, struct cnss_plat_data, qmi_wlfw);
 	const struct wlfw_respond_get_info_ind_msg_v01 *ind_msg = data;
-        #ifndef OPLUS_BUG_STABILITY
-        #LiJunlong@CONNECTIVITY.WIFI.INTERNET.188828.2020/08/13,delete for reduce cnss kernel log
+
 	cnss_pr_vdbg("Received QMI WLFW respond get info indication\n");
-        #endif /*OPLUS_BUG_STABILITY*/
 
 	if (!txn) {
 		cnss_pr_err("Spurious indication\n");
 		return;
 	}
-        #ifndef OPLUS_BUG_STABILITY
-        #LiJunlong@CONNECTIVITY.WIFI.INTERNET.188828.2020/08/13,delete for reduce cnss kernel log
+
 	cnss_pr_vdbg("Extract message with event length: %d, type: %d, is last: %d, seq no: %d\n",
 		     ind_msg->data_len, ind_msg->type,
 		     ind_msg->is_last, ind_msg->seq_no);
-        #endif /*OPLUS_BUG_STABILITY*/
 
 	if (plat_priv->get_info_cb_ctx && plat_priv->get_info_cb)
 		plat_priv->get_info_cb(plat_priv->get_info_cb_ctx,
@@ -2185,7 +2113,6 @@ int cnss_wlfw_server_arrive(struct cnss_plat_data *plat_priv, void *data)
 
 	if (test_bit(CNSS_QMI_WLFW_CONNECTED, &plat_priv->driver_state)) {
 		cnss_pr_err("Unexpected WLFW server arrive\n");
-		CNSS_ASSERT(0);
 		return -EINVAL;
 	}
 

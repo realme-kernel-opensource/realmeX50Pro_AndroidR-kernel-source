@@ -22,10 +22,6 @@
 #include "dsi_panel.h"
 
 #include "sde_dbg.h"
-#ifdef OPLUS_BUG_STABILITY
-/*Mark.Yao@PSW.MM.Display.LCD.Log,2020-03-05 add keylog */
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#endif /* OPLUS_BUG_STABILITY */
 #if defined(OPLUS_FEATURE_PXLW_IRIS5)
 // Pixelworks@MULTIMEDIA.DISPLAY, 2020/07/09, Iris5 Feature
 #include "../../iris/dsi_iris5_api.h"
@@ -49,18 +45,6 @@
 		fmt, c->name, ##__VA_ARGS__)
 #define DSI_CTRL_WARN(c, fmt, ...)	DRM_WARN("[msm-dsi-warn]: %s: " fmt,\
 		c ? c->name : "inv", ##__VA_ARGS__)
-
-#ifdef OPLUS_BUG_STABILITY
-/*Mark.Yao@PSW.MM.Display.LCD.Log,2020-05-14 add for mm keyevent */
-#undef DSI_CTRL_ERR
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#define DSI_CTRL_ERR(c, fmt, ...) \
-	do { \
-		DRM_DEV_ERROR(NULL, "[msm-dsi-error]: %s: "\
-				fmt, c ? c->name : "inv", ##__VA_ARGS__); \
-		mm_fb_display_kevent_named(MM_FB_KEY_RATELIMIT_1H, fmt, ##__VA_ARGS__); \
-	} while(0)
-#endif /* OPLUS_BUG_STABILITY */
 
 struct dsi_ctrl_list_item {
 	struct dsi_ctrl *ctrl;
@@ -315,6 +299,7 @@ static void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl)
 		cancel_work_sync(&dsi_ctrl->dma_cmd_wait);
 	} else {
 		flush_workqueue(dsi_ctrl->dma_cmd_workq);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
 	}
 }
 
@@ -373,9 +358,7 @@ static void dsi_ctrl_dma_cmd_wait_for_done(struct work_struct *work)
 				dsi_ctrl_disable_status_interrupt(dsi_ctrl,
 						DSI_SINT_CMD_MODE_DMA_DONE);
 
-				mm_fb_display_kevent("dma_tx irq trigger fixup", MM_FB_KEY_RATELIMIT_NONE, "irq status=%x", status);
 			}
-			mm_fb_display_kevent("dma_tx irq trigger err", MM_FB_KEY_RATELIMIT_1H, "irq status=%x", status);
 #endif
 		} else {
 			DSI_CTRL_ERR(dsi_ctrl,
@@ -396,7 +379,7 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 	int rc = 0;
 	struct dsi_ctrl_state_info *state = &dsi_ctrl->current_state;
 
-	SDE_EVT32(dsi_ctrl->cell_index, op);
+	SDE_EVT32(dsi_ctrl->cell_index, op, op_state);
 
 	switch (op) {
 	case DSI_CTRL_OP_POWER_STATE_CHANGE:
@@ -1020,6 +1003,7 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 	DSI_CTRL_DEBUG(dsi_ctrl, "byte_clk_rate = %llu, byte_intf_clk = %llu\n",
 		  byte_clk_rate, byte_intf_clk_rate);
 	DSI_CTRL_DEBUG(dsi_ctrl, "pclk_rate = %llu\n", pclk_rate);
+	SDE_EVT32(dsi_ctrl->cell_index, bit_rate, byte_clk_rate, pclk_rate);
 
 	dsi_ctrl->clk_freq.byte_clk_rate = byte_clk_rate;
 	dsi_ctrl->clk_freq.byte_intf_clk_rate = byte_intf_clk_rate;
@@ -1207,6 +1191,7 @@ void dsi_message_setup_tx_mode(struct dsi_ctrl *dsi_ctrl,
 	 * override cmd fetch mode during secure session
 	 */
 	if (dsi_ctrl->secure_mode) {
+		SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_CASE1);
 		*flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
 		*flags |= DSI_CTRL_CMD_FIFO_STORE;
 		DSI_CTRL_DEBUG(dsi_ctrl,
@@ -1257,21 +1242,18 @@ int dsi_message_validate_tx_mode(struct dsi_ctrl *dsi_ctrl,
 	}
 
 	if (*flags & DSI_CTRL_CMD_FETCH_MEMORY) {
-	#if defined(OPLUS_FEATURE_PXLW_IRIS5)
+#if defined(OPLUS_FEATURE_PXLW_IRIS5)
 		if (iris_get_feature()){
 			if ((dsi_ctrl->cmd_len + cmd_len + 4) > SZ_256K) {
 				DSI_CTRL_ERR(dsi_ctrl, "Cannot transfer,size is greater than 256K\n");
 				return -ENOTSUPP;
 			}
-		} else {
-	#endif
-			if ((dsi_ctrl->cmd_len + cmd_len + 4) > SZ_4K) {
-				DSI_CTRL_ERR(dsi_ctrl, "Cannot transfer,size is greater than 4096\n");
-				return -ENOTSUPP;
-			}
-#if defined(OPLUS_FEATURE_PXLW_IRIS5)
-		}
+		} else
 #endif
+		if ((dsi_ctrl->cmd_len + cmd_len + 4) > SZ_4K) {
+			DSI_CTRL_ERR(dsi_ctrl, "Cannot transfer,size is greater than 4096\n");
+			return -ENOTSUPP;
+		}
 	}
 
 	return rc;
@@ -1288,7 +1270,8 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 	struct dsi_mode_info *timing;
 	struct dsi_ctrl_hw_ops dsi_hw_ops = dsi_ctrl->hw.ops;
 
-	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, flags);
+	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, flags,
+		msg->flags);
 	/* check if custom dma scheduling line needed */
 	if ((dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE) &&
 		(flags & DSI_CTRL_CMD_CUSTOM_DMA_SCHED))
@@ -1493,7 +1476,7 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl,
 	#if defined(OPLUS_FEATURE_PXLW_IRIS5)
 		if (!iris_get_feature())
 	#endif
-			msm_gem_sync(dsi_ctrl->tx_cmd_buf);
+		msm_gem_sync(dsi_ctrl->tx_cmd_buf);
 		for (cnt = 0; cnt < length; cnt++)
 			cmdbuf[dsi_ctrl->cmd_len + cnt] = buffer[cnt];
 
@@ -2553,6 +2536,7 @@ static bool dsi_ctrl_check_for_spurious_error_interrupts(
 	if ((jiffies_now - dsi_ctrl->jiffies_start) < intr_check_interval) {
 		if (dsi_ctrl->error_interrupt_count > interrupt_threshold) {
 			DSI_CTRL_WARN(dsi_ctrl, "Detected spurious interrupts on dsi ctrl\n");
+			SDE_EVT32_IRQ(dsi_ctrl->error_interrupt_count);
 			return true;
 		}
 	} else {
@@ -2812,7 +2796,7 @@ void dsi_ctrl_enable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 			intr_idx >= DSI_STATUS_INTERRUPT_COUNT)
 		return;
 
-	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, intr_idx);
 	spin_lock_irqsave(&dsi_ctrl->irq_info.irq_lock, flags);
 
 	if (dsi_ctrl->irq_info.irq_stat_refcount[intr_idx] == 0) {
@@ -2845,7 +2829,7 @@ void dsi_ctrl_disable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 	if (!dsi_ctrl || intr_idx >= DSI_STATUS_INTERRUPT_COUNT)
 		return;
 
-	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32_IRQ(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, intr_idx);
 	spin_lock_irqsave(&dsi_ctrl->irq_info.irq_lock, flags);
 
 	if (dsi_ctrl->irq_info.irq_stat_refcount[intr_idx])
@@ -3299,6 +3283,56 @@ void dsi_ctrl_mask_overflow(struct dsi_ctrl *dsi_ctrl, bool enable)
 }
 
 /**
+ * dsi_ctrl_clear_slave_dma_status -   API to clear slave DMA status
+ * @dsi_ctrl:                   DSI controller handle.
+ * @flags:                      Modifiers
+ */
+int dsi_ctrl_clear_slave_dma_status(struct dsi_ctrl *dsi_ctrl, u32 flags)
+{
+	struct dsi_ctrl_hw_ops dsi_hw_ops;
+	u32 status;
+	u32 mask = DSI_CMD_MODE_DMA_DONE;
+	int rc = 0, wait_for_done = 5;
+
+	if (!dsi_ctrl) {
+		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
+		return -EINVAL;
+	}
+
+	/* Return if this is not the last command */
+	if (!(flags & DSI_CTRL_CMD_LAST_COMMAND))
+		return rc;
+
+	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY);
+
+	mutex_lock(&dsi_ctrl->ctrl_lock);
+
+	dsi_hw_ops = dsi_ctrl->hw.ops;
+
+	while (wait_for_done > 0) {
+		status = dsi_hw_ops.get_interrupt_status(&dsi_ctrl->hw);
+		if (status & mask) {
+			status |= (DSI_CMD_MODE_DMA_DONE | DSI_BTA_DONE);
+			dsi_hw_ops.clear_interrupt_status(&dsi_ctrl->hw,
+				status);
+			SDE_EVT32(dsi_ctrl->cell_index, status);
+			wait_for_done = 1;
+			break;
+		}
+		udelay(10);
+		wait_for_done--;
+	}
+
+	if (wait_for_done == 0)
+		DSI_CTRL_ERR(dsi_ctrl,
+				"DSI1 CMD_MODE_DMA_DONE failed\n");
+
+	mutex_unlock(&dsi_ctrl->ctrl_lock);
+
+	return rc;
+}
+
+/**
  * dsi_ctrl_cmd_tx_trigger() - Trigger a deferred command.
  * @dsi_ctrl:              DSI controller handle.
  * @flags:                 Modifiers.
@@ -3572,6 +3606,7 @@ int dsi_ctrl_set_host_engine_state(struct dsi_ctrl *dsi_ctrl,
 	else
 		dsi_ctrl->hw.ops.ctrl_en(&dsi_ctrl->hw, false);
 
+	SDE_EVT32(dsi_ctrl->cell_index, state);
 	DSI_CTRL_DEBUG(dsi_ctrl, "Set host engine state = %d\n", state);
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_HOST_ENGINE, state);
 error:
@@ -3611,6 +3646,7 @@ int dsi_ctrl_set_cmd_engine_state(struct dsi_ctrl *dsi_ctrl,
 	else
 		dsi_ctrl->hw.ops.cmd_engine_en(&dsi_ctrl->hw, false);
 
+	SDE_EVT32(dsi_ctrl->cell_index, state);
 	DSI_CTRL_DEBUG(dsi_ctrl, "Set cmd engine state = %d\n", state);
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_CMD_ENGINE, state);
 error:
@@ -3654,6 +3690,7 @@ int dsi_ctrl_set_vid_engine_state(struct dsi_ctrl *dsi_ctrl,
 	if (!on && dsi_ctrl->version < DSI_CTRL_VERSION_1_3)
 		dsi_ctrl->hw.ops.soft_reset(&dsi_ctrl->hw);
 
+	SDE_EVT32(dsi_ctrl->cell_index, state);
 	DSI_CTRL_DEBUG(dsi_ctrl, "Set video engine state = %d\n", state);
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_VID_ENGINE, state);
 error:

@@ -624,7 +624,6 @@ extern int mp2650_set_voltage_slew_rate(int value);
 #else /* CONFIG_OPPO_CHARGER_MTK */
 extern int qpnp_get_battery_voltage(void);
 extern int opchg_get_charger_type(void) ;
-extern int opchg_get_real_charger_type(void);
 extern int smbchg_get_chargerid_switch_val(void);
 extern void smbchg_set_chargerid_switch_val(int value);
 extern int smbchg_get_chargerid_volt(void);

@@ -4,11 +4,6 @@
 
 #include <linux/types.h>
 
-//#ifdef OPLUS_FEATURE_NWPOWER
-//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-#include <net/oppo_nwpower.h>
-//#endif /* OPLUS_FEATURE_NWPOWER */
-
 struct sk_buff;
 
 /* endpoint node id auto assignment */

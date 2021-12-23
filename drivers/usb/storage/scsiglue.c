@@ -65,10 +65,6 @@ static const char* host_info(struct Scsi_Host *host)
 static int slave_alloc (struct scsi_device *sdev)
 {
 	struct us_data *us = host_to_us(sdev->host);
-#ifndef VENDOR_EDIT
-/*LIZHIJIE@BSP.BASTCI.CHG  2019/10/18 add for asking the block layer to respect the maxpacket limitation*/
-	int maxp;
-#endif
 
 	/*
 	 * Set the INQUIRY transfer length to 36.  We don't use any of
@@ -77,11 +73,6 @@ static int slave_alloc (struct scsi_device *sdev)
 	 */
 	sdev->inquiry_len = 36;
 
-#ifndef VENDOR_EDIT
-/*LIZHIJIE@BSP.BASTCI.CHG  2019/10/18 add for asking the block layer to respect the maxpacket limitation*/
-	maxp = usb_maxpacket(us->pusb_dev, us->recv_bulk_pipe, 0);
-	blk_queue_virt_boundary(sdev->request_queue, maxp - 1);
-#endif
 	/*
 	 * Some host controllers may have alignment requirements.
 	 * We'll play it safe by requiring 512-byte alignment always.

@@ -54,7 +54,7 @@
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
-#include <soc/oppo/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 #endif
 
 #include "../oppo_charger.h"
@@ -225,15 +225,6 @@ void oppo_vooc_fw_type_dt(struct oppo_vooc_chip *chip)
 		"qcom,vooc_fw_update_newmethod");
 	chg_debug(" vooc_fw_upate:%d\n", chip->vooc_fw_update_newmethod);
 
-	rc = of_property_read_u32(node, "qcom,vooc-normal-low-temp",
-			&chip->vooc_normal_low_temp);
-	if (rc) {
-		chip->vooc_normal_low_temp = 250;
-	} else {
-		chg_debug("qcom,vooc-normal-low-temp is %d\n", chip->vooc_normal_low_temp);
-	}
-	chip->vooc_normal_low_temp_default = chip->vooc_normal_low_temp;
-
 	rc = of_property_read_u32(node, "qcom,vooc-low-temp",
 		&chip->vooc_low_temp);
 	if (rc) {
@@ -249,7 +240,6 @@ void oppo_vooc_fw_type_dt(struct oppo_vooc_chip *chip)
 	} else {
 		chg_debug("qcom,vooc-little-cool-temp is %d\n", chip->vooc_little_cool_temp);
 	}
-	chip->vooc_little_cool_temp_default = chip->vooc_little_cool_temp;
 
 	rc = of_property_read_u32(node, "qcom,vooc-cool-temp",
 			&chip->vooc_cool_temp);
@@ -258,16 +248,6 @@ void oppo_vooc_fw_type_dt(struct oppo_vooc_chip *chip)
 	} else {
 		chg_debug("qcom,vooc-cool-temp is %d\n", chip->vooc_cool_temp);
 	}
-	chip->vooc_cool_temp_default = chip->vooc_cool_temp;
-
-	rc = of_property_read_u32(node, "qcom,vooc-little-cold-temp",
-			&chip->vooc_little_cold_temp);
-	if (rc) {
-		chip->vooc_little_cold_temp = 50;
-	} else {
-		chg_debug("qcom,vooc-little-cold-temp is %d\n", chip->vooc_little_cold_temp);
-	}
-	chip->vooc_little_cold_temp_default = chip->vooc_little_cold_temp;
 
 	rc = of_property_read_u32(node, "qcom,vooc-little-cool-to-normal-temp",
 			&chip->vooc_little_cool_to_normal_temp);
@@ -311,17 +291,6 @@ void oppo_vooc_fw_type_dt(struct oppo_vooc_chip *chip)
 		"qcom,vooc_multistep_adjust_current_support");
 	chg_debug("qcom,vooc_multistep_adjust_current_supportis %d\n",
 		chip->vooc_multistep_adjust_current_support);
-
-	rc = of_property_read_u32(node, "qcom,vooc_reply_mcu_bits",
-			&chip->vooc_reply_mcu_bits);
-	if (rc) {
-		chip->vooc_reply_mcu_bits = 4;
-	} else {
-		chg_debug("qcom,vooc_reply_mcu_bits is %d\n",
-				chip->vooc_reply_mcu_bits);
-	}
-
-	chip->vooc_low_temp_smart_charge = of_property_read_bool(node, "qcom,vooc_low_temp_smart_charge");
 
 	rc = of_property_read_u32(node, "qcom,vooc_multistep_initial_batt_temp",
 		&chip->vooc_multistep_initial_batt_temp);
@@ -607,7 +576,7 @@ int oppo_vooc_asic_hwid_check(struct oppo_vooc_chip *chip)
 				return OPPO_VOOC_ASIC_HWID_NON_EXIST;
 			}
 		}
-		chg_err("chip->vooc_gpio.vooc_asic_id_gpio =%d\n",
+		chg_debug("chip->vooc_gpio.vooc_asic_id_gpio =%d\n",
 			chip->vooc_gpio.vooc_asic_id_gpio);
 	}
 
@@ -699,7 +668,7 @@ int oppo_vooc_mcu_hwid_check(struct oppo_vooc_chip *chip)
 					chip->vooc_gpio.vooc_mcu_id_gpio);
 			}
 		}
-		chg_err("chip->vooc_gpio.vooc_mcu_id_gpio =%d\n",
+		chg_debug("chip->vooc_gpio.vooc_mcu_id_gpio =%d\n",
 			chip->vooc_gpio.vooc_mcu_id_gpio);
 	}
 
@@ -754,7 +723,7 @@ int oppo_vooc_gpio_dt_init(struct oppo_vooc_chip *chip)
 					chip->vooc_gpio.switch1_gpio);
 			}
 		}
-		chg_err("chip->vooc_gpio.switch1_gpio =%d\n",
+		chg_debug("chip->vooc_gpio.switch1_gpio =%d\n",
 			chip->vooc_gpio.switch1_gpio);
 	}
 
@@ -795,7 +764,7 @@ int oppo_vooc_gpio_dt_init(struct oppo_vooc_chip *chip)
 		chip->vooc_gpio.switch2_gpio = of_get_named_gpio(node,
 			"qcom,charging_switch2-gpio", 0);
 		if (chip->vooc_gpio.switch2_gpio < 0) {
-			chg_err("chip->vooc_gpio.switch2_gpio not specified\n");
+			chg_debug("chip->vooc_gpio.switch2_gpio not specified\n");
 		} else {
 			if (gpio_is_valid(chip->vooc_gpio.switch2_gpio)) {
 				rc = gpio_request(chip->vooc_gpio.switch2_gpio,
@@ -805,7 +774,7 @@ int oppo_vooc_gpio_dt_init(struct oppo_vooc_chip *chip)
 						chip->vooc_gpio.switch2_gpio);
 				}
 			}
-			chg_err("chip->vooc_gpio.switch2_gpio =%d\n",
+			chg_debug("chip->vooc_gpio.switch2_gpio =%d\n",
 				chip->vooc_gpio.switch2_gpio);
 		}
 	}
@@ -823,7 +792,7 @@ int oppo_vooc_gpio_dt_init(struct oppo_vooc_chip *chip)
 					chip->vooc_gpio.reset_gpio);
 			}
 		}
-		chg_err("chip->vooc_gpio.reset_gpio =%d\n",
+		chg_debug("chip->vooc_gpio.reset_gpio =%d\n",
 			chip->vooc_gpio.reset_gpio);
 	}
 	/* Parsing gpio clock*/
@@ -838,7 +807,7 @@ int oppo_vooc_gpio_dt_init(struct oppo_vooc_chip *chip)
 					chip->vooc_gpio.clock_gpio, rc);
 			}
 		}
-		chg_err("chip->vooc_gpio.clock_gpio =%d\n", chip->vooc_gpio.clock_gpio);
+		chg_debug("chip->vooc_gpio.clock_gpio =%d\n", chip->vooc_gpio.clock_gpio);
 	}
 	/* Parsing gpio data*/
 	chip->vooc_gpio.data_gpio = of_get_named_gpio(node, "qcom,charging_data-gpio", 0);
@@ -851,7 +820,7 @@ int oppo_vooc_gpio_dt_init(struct oppo_vooc_chip *chip)
 				chg_err("unable to request gpio [%d]\n", chip->vooc_gpio.data_gpio);
 			}
 		}
-		chg_err("chip->vooc_gpio.data_gpio =%d\n", chip->vooc_gpio.data_gpio);
+		chg_debug("chip->vooc_gpio.data_gpio =%d\n", chip->vooc_gpio.data_gpio);
 	}
 	oppo_vooc_data_irq_init(chip);
 	rc = opchg_bq27541_gpio_pinctrl_init(chip);
@@ -927,20 +896,15 @@ void opchg_set_reset_sleep(struct oppo_vooc_chip *chip)
 
 void opchg_set_reset_active(struct oppo_vooc_chip *chip)
 {
+	int active_level = 0;
+	int sleep_level = 1;
+
 	if (chip->adapter_update_real == ADAPTER_FW_NEED_UPDATE
 			|| chip->btb_temp_over || chip->mcu_update_ing) {
 		chg_debug(" adapter_fw_need_update:%d,btb_temp_over:%d,mcu_update_ing:%d,return\n",
 			chip->adapter_update_real, chip->btb_temp_over, chip->mcu_update_ing);
 		return;
 	}
-	opchg_set_reset_active_force(chip);
-}
-
-void opchg_set_reset_active_force(struct oppo_vooc_chip *chip)
-{
-	int active_level = 0;
-	int sleep_level = 1;
-
 	if (chip->vooc_gpio.switch1_ctr1_gpio > 0) {//rk826
 		active_level = 1;
 		sleep_level = 0;
@@ -1100,18 +1064,15 @@ void switch_fast_chg(struct oppo_vooc_chip *chip)
 		} else {
 			if (oppo_vooc_get_fastchg_allow() == false
 					&& oppo_vooc_get_fastchg_to_warm() == true) {
-				chg_err(" fastchg_allow false, to_warm true, don't switch to vooc mode\n");
+				chg_debug(" fastchg_allow false, to_warm true, don't switch to vooc mode\n");
 			} else {
 				opchg_set_switch_mode(chip, VOOC_CHARGER_MODE);
-				if(oppo_chg_get_chargerid_switch_val() == 0) {
-					oppo_chg_set_chargerid_switch_val(1);
-				}
 				opchg_set_clock_sleep(chip);
 				opchg_set_reset_active(chip);
 			}
 		}
 	}
-	chg_err(" end, allow_fast_chg:%d\n", oppo_vooc_get_fastchg_allow());
+	chg_debug(" end, allow_fast_chg:%d\n", oppo_vooc_get_fastchg_allow());
 }
 
 int oppo_vooc_get_ap_clk_gpio_val(struct oppo_vooc_chip *chip)
@@ -1155,7 +1116,7 @@ void opchg_reply_mcu_data(struct oppo_vooc_chip *chip, int ret_info, int device_
 			gpio_set_value(chip->vooc_gpio.data_gpio, ret_info & 0x1);
 		} else {
 			gpio_set_value(chip->vooc_gpio.data_gpio, device_type);
-			chg_err("device_type = %d\n", device_type);
+			chg_debug("device_type = %d\n", device_type);
 		}
 		opchg_set_clock_active(chip);
 		usleep_range(1000, 1000);
@@ -1165,24 +1126,23 @@ void opchg_reply_mcu_data(struct oppo_vooc_chip *chip, int ret_info, int device_
 }
 
 
-/*
 void opchg_reply_mcu_data_4bits
 		(struct oppo_vooc_chip *chip, int ret_info, int device_type)
 {
 	int i = 0;
 	for (i = 0; i < 4; i++) {
-		if (i == 0) {
+		if (i == 0) {					/*tell mcu1503 device_type*/
 			gpio_set_value(chip->vooc_gpio.data_gpio, ret_info >> 2);
-			chg_err("first_send_bit = %d\n", ret_info >> 2);
+			chg_debug("first_send_bit = %d\n", ret_info >> 2);
 		} else if (i == 1) {
 			gpio_set_value(chip->vooc_gpio.data_gpio, (ret_info >> 1) & 0x1);
-			chg_err("second_send_bit = %d\n", (ret_info >> 1) & 0x1);
+			chg_debug("second_send_bit = %d\n", (ret_info >> 1) & 0x1);
 		} else if (i == 2) {
 			gpio_set_value(chip->vooc_gpio.data_gpio, ret_info & 0x1);
-			chg_err("third_send_bit = %d\n", ret_info & 0x1);
+			chg_debug("third_send_bit = %d\n", ret_info & 0x1);
 		}else {
 			gpio_set_value(chip->vooc_gpio.data_gpio, device_type);
-			chg_err("device_type = %d\n", device_type);
+			chg_debug("device_type = %d\n", device_type);
 		}
 		opchg_set_clock_active(chip);
 		usleep_range(1000, 1000);
@@ -1190,52 +1150,7 @@ void opchg_reply_mcu_data_4bits
 		usleep_range(19000, 19000);
 	}
 }
-*/
 
-void opchg_reply_mcu_data_4bits(struct oppo_vooc_chip *chip, int ret_info, int device_type)
-{
-	int i = 0;
-	int reply_counts = 0;
-
-	if (chip->vooc_multistep_adjust_current_support == false) {
-		reply_counts = 3;
-	} else {
-		if (chip->vooc_reply_mcu_bits == 4) {
-			reply_counts = 4;
-		} else if (chip->vooc_reply_mcu_bits == 7) {
-			reply_counts = 7;
-		} else {
-			reply_counts = 3;
-		}
-	}
-	chg_err("reply_counts = %d,ret_info:%d\n", reply_counts, ret_info);
-	if (chip->w_soc_temp_to_mcu == false) {
-		for (i = 1; i < reply_counts; i++) {
-			gpio_set_value(chip->vooc_gpio.data_gpio, (ret_info >> (reply_counts - i - 1)) & 0x01);
-			chg_err("send_bit[%d] = %d\n", i, (ret_info >> (reply_counts - i - 1)) & 0x01);
-			opchg_set_clock_active(chip);
-			usleep_range(1000, 1000);
-			opchg_set_clock_sleep(chip);
-			usleep_range(19000, 19000);
-		}
-		gpio_set_value(chip->vooc_gpio.data_gpio, device_type);
-		chg_err("i=%d, device_type = %d\n", i, device_type);
-		opchg_set_clock_active(chip);
-		usleep_range(1000, 1000);
-		opchg_set_clock_sleep(chip);
-		usleep_range(19000, 19000);
-	} else {
-		chip->w_soc_temp_to_mcu = false;
-		for (i = 0; i < reply_counts; i++) {
-			gpio_set_value(chip->vooc_gpio.data_gpio, (ret_info >> (reply_counts - i - 1)) & 0x01);
-			chg_err("send_bit[%d] = %d\n", i, (ret_info >> (reply_counts - i - 1)) & 0x01);
-			opchg_set_clock_active(chip);
-			usleep_range(1000, 1000);
-			opchg_set_clock_sleep(chip);
-			usleep_range(19000, 19000);
-		}
-	}
-}
 
 void opchg_set_switch_fast_charger(struct oppo_vooc_chip *chip)
 {
@@ -1280,7 +1195,7 @@ void opchg_set_vooc_chargerid_switch_val(struct oppo_vooc_chip *chip, int value)
 void opchg_set_switch_normal_charger(struct oppo_vooc_chip *chip)
 {
 	if (chip->mcu_update_ing) {
-		chg_err(" mcu_update_ing, don't switch normal mode\n");
+		chg_debug(" mcu_update_ing, don't switch normal mode\n");
 		return;
 	}
 	if (chip->vooc_gpio.switch1_gpio > 0) {
@@ -1300,27 +1215,24 @@ void opchg_set_switch_earphone(struct oppo_vooc_chip *chip)
 void opchg_set_switch_mode(struct oppo_vooc_chip *chip, int mode)
 {
 	if (chip->adapter_update_real == ADAPTER_FW_NEED_UPDATE || chip->btb_temp_over) {
-		chg_err("adapter_fw_need_update: %d, btb_temp_over: %d\n",
+		chg_debug("adapter_fw_need_update: %d, btb_temp_over: %d\n",
 			chip->adapter_update_real, chip->btb_temp_over);
 		return;
 	}
 	if (mode == VOOC_CHARGER_MODE && chip->mcu_update_ing) {
-		chg_err(" mcu_update_ing, don't switch to vooc mode\n");
+		chg_debug(" mcu_update_ing, don't switch to vooc mode\n");
 		return;
 	}
 	switch (mode) {
 	case VOOC_CHARGER_MODE:	       /*11*/
 		opchg_set_switch_fast_charger(chip);
-		chg_err(" vooc mode, switch1_gpio:%d\n", gpio_get_value(chip->vooc_gpio.switch1_gpio));
 		break;
 	case HEADPHONE_MODE:		  /*10*/
 		opchg_set_switch_earphone(chip);
-		chg_err(" headphone mode, switch1_gpio:%d\n", gpio_get_value(chip->vooc_gpio.switch1_gpio));
 		break;
 	case NORMAL_CHARGER_MODE:	    /*01*/
 	default:
 		opchg_set_switch_normal_charger(chip);
-		chg_err(" normal mode, switch1_gpio:%d\n", gpio_get_value(chip->vooc_gpio.switch1_gpio));
 		break;
 	}
 	chip->dpdm_switch_mode = mode;
@@ -1334,7 +1246,7 @@ int oppo_vooc_get_switch_gpio_val(struct oppo_vooc_chip *chip)
 void reset_fastchg_after_usbout(struct oppo_vooc_chip *chip)
 {
 	if (oppo_vooc_get_fastchg_started() == false) {
-		chg_err(" switch off fastchg\n");
+		chg_debug(" switch off fastchg\n");
 		opchg_set_switch_mode(chip, NORMAL_CHARGER_MODE);
 		oppo_vooc_set_fastchg_type_unknow();
 	}

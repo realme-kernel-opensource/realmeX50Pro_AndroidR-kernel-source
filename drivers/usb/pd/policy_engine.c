@@ -22,14 +22,6 @@
 #include <linux/usb/usbpd.h>
 #include "usbpd.h"
 
-#ifdef VENDOR_EDIT
-/* tongfeng.Huang@PSW.BSP.CHG.Basic, 2019/02/28, used for usb3 gen test */
-/* To start USB stack for USB3.1 compliance testing */
-static bool usb_compliance_mode;
-module_param(usb_compliance_mode, bool, 0644);
-MODULE_PARM_DESC(usb_compliance_mode, "USB3.1 compliance testing");
-#endif
-
 enum usbpd_state {
 	PE_UNKNOWN,
 	PE_ERROR_RECOVERY,
@@ -921,9 +913,7 @@ static int pd_eval_src_caps(struct usbpd *pd)
 #ifdef VENDOR_EDIT
 /* Yichun.Chen  PSW.BSP.CHG  2019-08-19  for c to c */
 	if (pd->peer_usb_comm && pd->current_dr == DR_UFP && !pd->pd_connected) {
-			printk("set oppochg_pd_sdp = true\n");
             opchg_set_pd_sdp(true);
-			//oppochg_pd_sdp = true;
 	}
 #endif
 	/* First time connecting to a PD source and it supports USB data */
@@ -1983,6 +1973,7 @@ static void vconn_swap(struct usbpd *pd)
 		//			   FRAME_FILTER_EN_HARD_RESET);
 #else
 		pd_phy_update_frame_filter(FRAME_FILTER_EN_SOP |
+					   FRAME_FILTER_EN_SOPI |
 					   FRAME_FILTER_EN_HARD_RESET);
 #endif
 		/*
@@ -2954,20 +2945,11 @@ static bool handle_ctrl_snk_ready(struct usbpd *pd, struct rx_msg *rx_msg)
 		handle_get_src_cap_extended(pd);
 		break;
 	case MSG_ACCEPT:
-#ifndef OPLUS_FEATURE_CHG_BASIC
-/* WuJie@BSP.CHG.Basic, 2021/04/21, modify for PD charger */
 	case MSG_REJECT:
-#endif
 	case MSG_WAIT:
 		usbpd_warn(&pd->dev, "Unexpected message\n");
 		usbpd_set_state(pd, PE_SEND_SOFT_RESET);
 		break;
-#ifdef OPLUS_FEATURE_CHG_BASIC
-/* WuJie@BSP.CHG.Basic, 2021/04/21, modify for PD charger */
-	case MSG_REJECT:
-		usbpd_warn(&pd->dev, "Unexpected message(reject), ignore it\n");
-		break;
-#endif
 	default:
 		return false;
 	}
@@ -3808,18 +3790,7 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 					ret);
 			return ret;
 		}
-#ifdef VENDOR_EDIT
-/* tongfeng.Huang@BSP.CHG.Basic, 2019/02/28,   used for usb3 gen test */
-		if (val.intval == POWER_SUPPLY_TYPE_USB ||
-			val.intval == POWER_SUPPLY_TYPE_USB_CDP ||
-			val.intval == POWER_SUPPLY_TYPE_USB_FLOAT ||
-			usb_compliance_mode) {
-			usbpd_info(&pd->dev, "typec mode:%d type:%d\n",
-			typec_mode, val.intval);
-			pd->typec_mode = typec_mode;
-			queue_work(pd->wq, &pd->start_periph_work);
-		}
-#else
+
 		if (val.intval == POWER_SUPPLY_TYPE_USB ||
 			val.intval == POWER_SUPPLY_TYPE_USB_CDP ||
 			val.intval == POWER_SUPPLY_TYPE_USB_FLOAT) {
@@ -3828,17 +3799,9 @@ static int psy_changed(struct notifier_block *nb, unsigned long evt, void *ptr)
 			pd->typec_mode = typec_mode;
 			queue_work(pd->wq, &pd->start_periph_work);
 		}
-#endif
+
 		return 0;
 	}
-
-#ifdef VENDOR_EDIT
-/* tongfeng.Huang@BSP.CHG.Basic, 2019/02/28,   used for usb3 gen test */
-	if (usb_compliance_mode) {
-		usbpd_err(&pd->dev, "start usb peripheral for testing");
-		///start_usb_peripheral(pd);
-	}
-#endif
 
 	ret = power_supply_get_property(pd->usb_psy,
 			POWER_SUPPLY_PROP_PRESENT, &val);

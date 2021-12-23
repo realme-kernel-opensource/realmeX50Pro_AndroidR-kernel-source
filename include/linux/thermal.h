@@ -530,10 +530,6 @@ thermal_of_cooling_device_register(struct device_node *np, char *, void *,
 void thermal_cooling_device_unregister(struct thermal_cooling_device *);
 struct thermal_zone_device *thermal_zone_get_zone_by_name(const char *name);
 int thermal_zone_get_temp(struct thermal_zone_device *tz, int *temp);
-#ifdef OPLUS_BUG_STABILITY
-//wen.luo@bsp.kernel.stability, 2020/6/18 ,workaround for get_temp temp ss reboot
-int thermal_zone_get_temp_workaround(struct thermal_zone_device *tz, int *temp);
-#endif
 int thermal_zone_get_slope(struct thermal_zone_device *tz);
 int thermal_zone_get_offset(struct thermal_zone_device *tz);
 
@@ -600,12 +596,6 @@ static inline struct thermal_zone_device *thermal_zone_get_zone_by_name(
 static inline int thermal_zone_get_temp(
 		struct thermal_zone_device *tz, int *temp)
 { return -ENODEV; }
-#ifdef OPLUS_BUG_STABILITY
-//wen.luo@bsp.kernel.stability, 2020/6/18 ,workaround for get_temp temp ss reboot
-static inline int thermal_zone_get_temp_workaround(
-		struct thermal_zone_device *tz, int *temp)
-{ return -ENODEV; }
-#endif
 static inline int thermal_zone_get_slope(
 		struct thermal_zone_device *tz)
 { return -ENODEV; }

@@ -1041,15 +1041,7 @@ static int spi_transfer_one_message(struct spi_controller *ctlr,
 				ret = 0;
 				ms = 8LL * 1000LL * xfer->len;
 				do_div(ms, xfer->speed_hz);
-
-				#ifndef OPLUS_FEATURE_TP_BASIC
-				/* ZhongWenjie@BSP.TP.FUNCTION, 2018/12/29,
-				* esd recovery need more tolerance for tp re-flash fw */
 				ms += ms + 200; /* some tolerance */
-				#else
-				ms += ms + 1500; /* some tolerance */
-				#endif /* OPLUS_FEATURE_TP_BASIC */
-
 
 				if (ms > UINT_MAX)
 					ms = UINT_MAX;

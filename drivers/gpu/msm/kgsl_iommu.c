@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2011-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2011-2020, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/compat.h>
@@ -11,12 +11,6 @@
 #include <linux/random.h>
 #include <soc/qcom/scm.h>
 #include <soc/qcom/secure_buffer.h>
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/01/22,
- * record the gpu highest addr
- */
-#include <linux/resmap_account.h>
-#endif
 
 #include "adreno.h"
 #include "kgsl_device.h"
@@ -25,11 +19,6 @@
 #include "kgsl_pwrctrl.h"
 #include "kgsl_sharedmem.h"
 #include "kgsl_trace.h"
-
-#ifdef OPLUS_BUG_STABILITY
-/* Deliang.peng@PSW.MM.Display.LCD.Machine, 2019/01/29,add for mm kevent fb. */
-#include <soc/oplus/system/oplus_mm_kevent_fb.h>
-#endif /*OPLUS_BUG_STABILITY*/
 
 #define _IOMMU_PRIV(_mmu) (&((_mmu)->priv.iommu))
 
@@ -659,7 +648,7 @@ static void _get_entries(struct kgsl_process_private *private,
 		prev->flags = p->memdesc.flags;
 		prev->priv = p->memdesc.priv;
 		prev->pending_free = p->pending_free;
-		prev->pid = pid_nr(private->pid);
+		prev->pid = private->pid;
 		__kgsl_get_memory_usage(prev);
 	}
 
@@ -669,7 +658,7 @@ static void _get_entries(struct kgsl_process_private *private,
 		next->flags = n->memdesc.flags;
 		next->priv = n->memdesc.priv;
 		next->pending_free = n->pending_free;
-		next->pid = pid_nr(private->pid);
+		next->pid = private->pid;
 		__kgsl_get_memory_usage(next);
 	}
 }
@@ -768,6 +757,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	unsigned int no_page_fault_log = 0;
 	char *fault_type = "unknown";
 	char *comm = "unknown";
+	bool fault_ret_flag = false;
 	struct kgsl_process_private *private;
 
 	static DEFINE_RATELIMIT_STATE(_rs,
@@ -797,7 +787,7 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 	private = kgsl_iommu_get_process(ptbase);
 
 	if (private) {
-		pid = pid_nr(private->pid);
+		pid = private->pid;
 		comm = private->comm;
 	}
 
@@ -811,9 +801,11 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		 * Turn off GPU IRQ so we don't get faults from it too.
 		 * The device mutex must be held to change power state
 		 */
-		mutex_lock(&device->mutex);
-		kgsl_pwrctrl_change_state(device, KGSL_STATE_AWARE);
-		mutex_unlock(&device->mutex);
+		if (mutex_trylock(&device->mutex)) {
+			kgsl_pwrctrl_change_state(device, KGSL_STATE_AWARE);
+			mutex_unlock(&device->mutex);
+		} else
+			fault_ret_flag = true;
 	}
 
 	contextidr = KGSL_IOMMU_GET_CTX_REG(ctx, CONTEXTIDR);
@@ -832,23 +824,6 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		no_page_fault_log = kgsl_mmu_log_fault_addr(mmu, ptbase, addr);
 
 	if (!no_page_fault_log && __ratelimit(&_rs)) {
-		#ifdef OPLUS_BUG_STABILITY
-		/*Deliang.Peng@PSW.MM.Display.LCD.Stable,2020-05-06 add for smmu key log */
-		#ifdef NEED_FEEDBACK_TO_DISPLAY
-		mm_fb_kevent(OPLUS_MM_DIRVER_FB_EVENT_TO_DISPLAY,
-		    OPLUS_DISPLAY_EVENTID_GPU_FAULT,
-		    "kgsl error", MM_FB_KEY_RATELIMIT_1H,
-		    "EventID@@%d$$gpu fault$$pid=%08lx,comm=%d",
-		    OPLUS_MM_DIRVER_FB_EVENT_ID_GPU_FAULT, ptname, comm);
-		#else
-		//feedback to atlas
-		mm_fb_kevent(OPLUS_MM_DIRVER_FB_EVENT_TO_ATLAS,
-		    OPLUS_DISPLAY_EVENTID_GPU_FAULT,
-		    "gpu fault", MM_FB_KEY_RATELIMIT_1H,
-		    "pid=%08lx,comm=%d", ptname, comm);
-		#endif //NEED_FEEDBACK_TO_DISPLAY
-		#endif /*OPLUS_BUG_STABILITY*/
-
 		dev_crit(ctx->kgsldev->dev,
 			"GPU PAGE FAULT: addr = %lX pid= %d name=%s\n", addr,
 			ptname, comm);
@@ -890,13 +865,12 @@ static int kgsl_iommu_fault_handler(struct iommu_domain *domain,
 		}
 	}
 
-
 	/*
 	 * We do not want the h/w to resume fetching data from an iommu
 	 * that has faulted, this is better for debugging as it will stall
 	 * the GPU and trigger a snapshot. Return EBUSY error.
 	 */
-	if (test_bit(KGSL_FT_PAGEFAULT_GPUHALT_ENABLE,
+	if (!fault_ret_flag && test_bit(KGSL_FT_PAGEFAULT_GPUHALT_ENABLE,
 		&adreno_dev->ft_pf_policy) &&
 		(flags & IOMMU_FAULT_TRANSACTION_STALLED)) {
 		uint32_t sctlr_val;
@@ -1070,14 +1044,6 @@ static void setup_64bit_pagetable(struct kgsl_mmu *mmu,
 		pt->compat_va_end = KGSL_IOMMU_SECURE_BASE(mmu);
 		pt->va_start = KGSL_IOMMU_VA_BASE64;
 		pt->va_end = KGSL_IOMMU_VA_END64;
-
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-		/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
-		 * record the high limit of gpu mmap_base, used for create
-		 * reserved area
-		 */
-		gpu_compat_high_limit_addr = pt->compat_va_end;
-#endif
 	}
 
 	if (pagetable->name != KGSL_MMU_GLOBAL_PT &&
@@ -2473,26 +2439,6 @@ static bool iommu_addr_in_svm_ranges(struct kgsl_iommu_pt *pt,
 	return false;
 }
 
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-//Peifeng.Li@PSW.Kernel.BSP.Memory, 2020/04/22,virtual reserve memory
-static uint64_t kgsl_iommu_find_svm_region_legacy(struct kgsl_pagetable *pagetable,
-		uint64_t start, uint64_t end, uint64_t size,
-		uint64_t alignment)
-{
-	uint64_t addr;
-
-	/* Avoid black holes */
-	if (WARN(end <= start, "Bad search range: 0x%llx-0x%llx", start, end))
-		return (uint64_t) -EINVAL;
-
-	spin_lock(&pagetable->lock);
-	addr = _get_unmapped_area(pagetable,
-			start, end, size, alignment);
-	spin_unlock(&pagetable->lock);
-	return addr;
-}
-#endif
-
 static int kgsl_iommu_set_svm_region(struct kgsl_pagetable *pagetable,
 		uint64_t gpuaddr, uint64_t size)
 {
@@ -2543,11 +2489,6 @@ static int get_gpuaddr(struct kgsl_pagetable *pagetable,
 		return -ENOMEM;
 	}
 
-	/*
-	 * This path is only called in a non-SVM path with locks so we can be
-	 * sure we aren't racing with anybody so we don't need to worry about
-	 * taking the lock
-	 */
 	ret = _insert_gpuaddr(pagetable, addr, size);
 	spin_unlock(&pagetable->lock);
 
@@ -2849,10 +2790,6 @@ static struct kgsl_mmu_pt_ops iommu_pt_ops = {
 	.put_gpuaddr = kgsl_iommu_put_gpuaddr,
 	.set_svm_region = kgsl_iommu_set_svm_region,
 	.find_svm_region = kgsl_iommu_find_svm_region,
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-//Peifeng.Li@PSW.Kernel.BSP.Memory, 2020/04/22,virtual reserve memory
-    .find_svm_region_legacy = kgsl_iommu_find_svm_region_legacy,
-#endif
 	.svm_range = kgsl_iommu_svm_range,
 	.addr_in_range = kgsl_iommu_addr_in_range,
 	.mmu_map_offset = kgsl_iommu_map_offset,

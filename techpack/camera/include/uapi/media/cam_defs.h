@@ -58,9 +58,12 @@ struct cam_oem_rw_ctl {
 #define CAM_COMMON_OPCODE_BASE_v2           0x150
 #define CAM_ACQUIRE_HW                      (CAM_COMMON_OPCODE_BASE_v2 + 0x1)
 #define CAM_RELEASE_HW                      (CAM_COMMON_OPCODE_BASE_v2 + 0x2)
+#ifdef VENDOR_EDIT
 //add dpc read for imx471
 #define CAM_GET_DPC_DATA                    (CAM_COMMON_OPCODE_BASE_v2 + 0x3)
-
+#else
+#define CAM_DUMP_REQ                        (CAM_COMMON_OPCODE_BASE_v2 + 0x3)
+#endif
 #define CAM_EXT_OPCODE_BASE                     0x200
 #define CAM_CONFIG_DEV_EXTERNAL                 (CAM_EXT_OPCODE_BASE + 0x1)
 
@@ -137,8 +140,6 @@ struct cam_control {
 #define VIDIOC_CAM_CONTROL \
 	_IOWR('V', BASE_VIDIOC_PRIVATE, struct cam_control)
 
-#define VIDIOC_CAM_FTM_POWNER_UP 0
-#define VIDIOC_CAM_FTM_POWNER_DOWN 1
 /**
  * struct cam_hw_version - Structure for HW version of camera devices
  *
@@ -900,5 +901,26 @@ struct cam_reg_dump_input_info {
 	uint32_t                   dump_set_offsets[1];
 };
 
+/**
+ * struct cam_dump_req_cmd -
+ *        Dump the information of issue req id
+ *
+ * @issue_req_id   : Issue Request Id
+ * @offset         : Offset for the buffer
+ * @buf_handle     : Buffer Handle
+ * @error_type     : Error type, using it, dumping information can be extended
+ * @session_handle : Session Handle
+ * @link_hdl       : link handle
+ * @dev_handle     : Device Handle
+ */
+struct cam_dump_req_cmd {
+	uint64_t       issue_req_id;
+	size_t         offset;
+	uint32_t       buf_handle;
+	uint32_t       error_type;
+	int32_t        session_handle;
+	int32_t        link_hdl;
+	int32_t        dev_handle;
+};
 
 #endif /* __UAPI_CAM_DEFS_H__ */

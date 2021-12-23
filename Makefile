@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 4
 PATCHLEVEL = 19
-SUBLEVEL = 110
+SUBLEVEL = 113
 EXTRAVERSION =
 NAME = "People's Front"
 
@@ -370,7 +370,7 @@ KBUILD_HOSTLDLIBS   := $(HOST_LFS_LIBS) $(HOSTLDLIBS)
 # Make variables (CC, etc...)
 AS		= $(CROSS_COMPILE)as
 LD		= $(CROSS_COMPILE)ld
-REAL_CC		= $(CROSS_COMPILE)gcc
+CC		= $(CROSS_COMPILE)gcc
 CPP		= $(CC) -E
 AR		= $(CROSS_COMPILE)ar
 NM		= $(CROSS_COMPILE)nm
@@ -388,10 +388,6 @@ PYTHON		= python
 PYTHON2		= python2
 PYTHON3		= python3
 CHECK		= sparse
-
-# Use the wrapper for the compiler.  This wrapper scans for new
-# warnings and causes the build to stop upon encountering them
-CC		= $(PYTHON) $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void -Wno-unknown-attribute $(CF)
@@ -442,80 +438,9 @@ KBUILD_CFLAGS +=   -DVENDOR_EDIT
 KBUILD_CPPFLAGS += -DVENDOR_EDIT
 CFLAGS_KERNEL +=   -DVENDOR_EDIT
 CFLAGS_MODULE +=   -DVENDOR_EDIT
-# endif
-
-#ifdef VENDOR_EDIT
-#Jianchao.Shi@PSW.BSP.CHG.Basic, 2019/05/09, sjc Add for 806 high/low temp aging test
-ifeq ($(OPPO_HIGH_TEMP_VERSION),true)
-KBUILD_CFLAGS += -DCONFIG_HIGH_TEMP_VERSION
-endif
-#endif /* VENDOR_EDIT */
-
-#ifdef COLOROS_EDIT
 #Sunliang@TECH.SysTech.Build.BaseConfig, 2020/03/18, oplus customzation for flags or other variabls
 -include OplusKernelEnvConfig.mk
 #endif // COLOROS_EDIT
-
-#ifdef VENDOR_EDIT
-#huangjianan@TECH.Storage.FS.F2FS, 2020-03-08, add for aging version
-ifneq (,$(findstring Aging,$(SPECIAL_VERSION)))
-OPPO_F2FS_DEBUG := true
-endif
-
-export OPPO_F2FS_DEBUG
-#endif /* VENDOR_EDIT */
-
-#ifdef OPLUS_FEATURE_MEMLEAK_DETECT
-#Kui.Zhang@Bsp.Kernel.MM, 2020/05/19, Add for memleak test
-ifeq ($(TARGET_MEMLEAK_DETECT_TEST),1)
-OPPO_MEMLEAK_DETECT := true
-else ifeq ($(TARGET_MEMLEAK_DETECT_TEST),2)
-OPPO_MEMLEAK_DETECT := true
-OPPO_SLUB_TEST := true
-OPPO_KASAN_TEST := true
-else ifeq ($(TARGET_MEMLEAK_DETECT_TEST),3)
-OPPO_MEMLEAK_DETECT := true
-OPPO_KMEMLEAK_TEST := true
-OPPO_SLUB_TEST := true
-endif
-
-#Kui.Zhang@Bsp.Kernel.MM, 2020/05/19, Add for memleak test
-export OPPO_MEMLEAK_DETECT
-#endif
-
-#ifdef VENDOR_EDIT
-#Wen.Luo@Bsp.Kernel.Stability, 2018/12/05, Add for Debug Config, slub/kmemleak/kasan config
-ifeq ($(AGING_DEBUG_MASK),1)
-#Agingtest enable rtb
-OPPO_AGING_TEST := true
-endif
-
-ifeq ($(AGING_DEBUG_MASK),2)
-#enable kasan
-OPPO_KASAN_TEST := true
-endif
-
-ifeq ($(AGING_DEBUG_MASK),3)
-#enable kmemleak
-OPPO_KMEMLEAK_TEST := true
-endif
-
-ifeq ($(AGING_DEBUG_MASK),4)
-#enable rtb
-OPPO_AGING_TEST := true
-#enable kasan
-OPPO_SLUB_TEST := true
-endif
-
-ifeq ($(AGING_DEBUG_MASK),5)
-#enable rtb
-OPPO_AGING_TEST := true
-#enable kasan
-OPPO_PAGEOWNER_TEST := true
-endif
-
-export OPPO_AGING_TEST OPPO_KASAN_TEST OPPO_KMEMLEAK_TEST OPPO_SLUB_TEST OPPO_PAGEOWNER_TEST
-#endif
 
 export ARCH SRCARCH CONFIG_SHELL HOSTCC KBUILD_HOSTCFLAGS CROSS_COMPILE AS LD CC
 export CPP AR NM STRIP OBJCOPY OBJDUMP KBUILD_HOSTLDFLAGS KBUILD_HOSTLDLIBS
@@ -934,7 +859,7 @@ LD_FLAGS_LTO_CLANG := -mllvm -import-instr-limit=5
 KBUILD_LDFLAGS += $(LD_FLAGS_LTO_CLANG)
 KBUILD_LDFLAGS_MODULE += $(LD_FLAGS_LTO_CLANG)
 
-KBUILD_LDS_MODULE += $(srctree)/scripts/module-lto.lds
+KBUILD_LDFLAGS_MODULE += -T $(srctree)/scripts/module-lto.lds
 
 # allow disabling only clang LTO where needed
 DISABLE_LTO_CLANG := -fno-lto

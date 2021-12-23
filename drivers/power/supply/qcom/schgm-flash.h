@@ -7,14 +7,6 @@
 #define __SCHGM_FLASH_H__
 
 #include <linux/bitops.h>
-#ifdef OPLUS_FEATURE_CHG_BASIC
-/* zhangkun@BSP.CHG.Basic, 2019/03/25, Add for charging */
-#if defined(CONFIG_OPLUS_SM8250_CHARGER)
-#include "../../oplus/charger_ic/oplus_battery_msm8250.h"
-#elif defined(CONFIG_OPLUS_SM7250R_CHARGER)
-#include "../../oplus/charger_ic/oplus_battery_msm7250_R.h"
-#endif
-#endif
 
 #ifndef __SCHGM_FLASH_SUB_H__
 #define __SCHGM_FLASH_SUB_H__

@@ -62,10 +62,6 @@ struct wakeup_source {
 	struct timer_list	timer;
 	unsigned long		timer_expires;
 	ktime_t total_time;
-	#ifdef OPLUS_FEATURE_POWERINFO_STANDBY
-	//Yunqing.Zeng@BSP.Power.Basic 2017/11/09 add for wakelock profiler
-	ktime_t total_time_backup;
-	#endif /*OPLUS_FEATURE_POWERINFO_STANDBY*/
 	ktime_t max_time;
 	ktime_t last_time;
 	ktime_t start_prevent_time;

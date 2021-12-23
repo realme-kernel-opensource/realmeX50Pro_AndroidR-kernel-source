@@ -33,7 +33,9 @@
 				(t).num_intf == (r).num_intf)
 #define IS_COMPATIBLE_PP_DSC(p, d) (p % 2 == d % 2)
 
+/* ~one vsync poll time for rsvp_nxt to cleared by modeset from commit thread */
 #define RM_NXT_CLEAR_POLL_TIMEOUT_US 16600
+
 /**
  * toplogy information to be used when ctl path version does not
  * support driving more than one interface per ctl_path
@@ -2179,9 +2181,9 @@ int sde_rm_reserve(
 	 * commit rsvps. This rsvp_nxt can be cleared by a back to back
 	 * check_only commit with modeset when its predecessor atomic
 	 * commit is delayed / not committed the reservation yet.
-
+	 * Poll for rsvp_nxt clear, allow the check_only commit if rsvp_nxt
+	 * gets cleared and bailout if it does not get cleared before timeout.
 	 */
-
 	if (test_only && rsvp_cur && rsvp_nxt) {
 		rsvp_nxt = _sde_rm_poll_get_rsvp_nxt_locked(rm, enc);
 		if (rsvp_nxt) {
@@ -2214,8 +2216,6 @@ int sde_rm_reserve(
 	 *       be discarded if in test-only mode.
 	 * If reservation is successful, and we're not in test-only, then we
 	 * replace the current with the next.
-	 * Poll for rsvp_nxt clear, allow the check_only commit if rsvp_nxt
-	 * gets cleared and bailout if it does not get cleared before timeout.
 	 */
 	rsvp_nxt = kzalloc(sizeof(*rsvp_nxt), GFP_KERNEL);
 	if (!rsvp_nxt) {

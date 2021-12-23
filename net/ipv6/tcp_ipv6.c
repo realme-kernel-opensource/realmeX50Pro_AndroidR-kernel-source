@@ -71,11 +71,6 @@
 
 #include <trace/events/tcp.h>
 
-//#ifdef OPLUS_FEATURE_NWPOWER
-//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-#include <net/oppo_nwpower.h>
-//#endif /* OPLUS_FEATURE_NWPOWER */
-
 static void	tcp_v6_send_reset(const struct sock *sk, struct sk_buff *skb);
 static void	tcp_v6_reqsk_send_ack(const struct sock *sk, struct sk_buff *skb,
 				      struct request_sock *req);
@@ -739,7 +734,6 @@ static void tcp_v6_init_req(struct request_sock *req,
 			    const struct sock *sk_listener,
 			    struct sk_buff *skb)
 {
-	bool l3_slave = ipv6_l3mdev_skb(TCP_SKB_CB(skb)->header.h6.flags);
 	struct inet_request_sock *ireq = inet_rsk(req);
 	const struct ipv6_pinfo *np = inet6_sk(sk_listener);
 
@@ -747,7 +741,7 @@ static void tcp_v6_init_req(struct request_sock *req,
 	ireq->ir_v6_loc_addr = ipv6_hdr(skb)->daddr;
 
 	/* So that link locals have meaning */
-	if ((!sk_listener->sk_bound_dev_if || l3_slave) &&
+	if (!sk_listener->sk_bound_dev_if &&
 	    ipv6_addr_type(&ireq->ir_v6_rmt_addr) & IPV6_ADDR_LINKLOCAL)
 		ireq->ir_iif = tcp_v6_iif(skb);
 
@@ -1440,11 +1434,6 @@ static int tcp_v6_rcv(struct sk_buff *skb)
 	int ret;
 	struct net *net = dev_net(skb->dev);
 
-	//#ifdef OPLUS_FEATURE_NWPOWER
-	//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-	oppo_match_ipa_ip_wakeup(OPPO_TCP_TYPE_V6, skb);
-	//#endif /* OPLUS_FEATURE_NWPOWER */
-
 	if (skb->pkt_type != PACKET_HOST)
 		goto discard_it;
 
@@ -1475,11 +1464,6 @@ lookup:
 				&refcounted);
 	if (!sk)
 		goto no_tcp_socket;
-
-	//#ifdef OPLUS_FEATURE_NWPOWER
-	//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-	oppo_match_ipa_tcp_wakeup(OPPO_TCP_TYPE_V6, sk);
-	//#endif /* OPLUS_FEATURE_NWPOWER */
 
 process:
 	if (sk->sk_state == TCP_TIME_WAIT)
@@ -1595,10 +1579,6 @@ bad_packet:
 	}
 
 discard_it:
-	//#ifdef OPLUS_FEATURE_NWPOWER
-	//Asiga@PSW.NW.DATA.2120730, 2019/06/26, add for classify glink wakeup services and count IPA wakeup.
-	oppo_ipa_schedule_work();
-	//#endif /* OPLUS_FEATURE_NWPOWER */
 	kfree_skb(skb);
 	return 0;
 

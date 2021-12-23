@@ -125,10 +125,7 @@ struct mtp_dev {
 
 	wait_queue_head_t read_wq;
 	wait_queue_head_t write_wq;
-#ifndef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
 	wait_queue_head_t intr_wq;
-#endif
 	struct usb_request *rx_req[RX_REQ_MAX];
 	int rx_done;
 
@@ -398,11 +395,6 @@ struct mtp_instance {
 /* temporary variable used between mtp_open() and mtp_gadget_bind() */
 static struct mtp_dev *_mtp_dev;
 
-#ifdef VENDOR_EDIT
-//yan.chen@Swdp.shanghai, 2015/11/26, add mtp callback for hp
-static ATOMIC_NOTIFIER_HEAD(mtp_rw_notifier);
-#endif
-
 static inline struct mtp_dev *func_to_mtp(struct usb_function *f)
 {
 	return container_of(f, struct mtp_dev, function);
@@ -509,10 +501,7 @@ static void mtp_complete_intr(struct usb_ep *ep, struct usb_request *req)
 
 	mtp_req_put(dev, &dev->intr_idle, req);
 
-#ifndef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
 	wake_up(&dev->intr_wq);
-#endif
 }
 
 static int mtp_create_bulk_endpoints(struct mtp_dev *dev,
@@ -1062,21 +1051,11 @@ static int mtp_send_event(struct mtp_dev *dev, struct mtp_event *event)
 	if (dev->state == STATE_OFFLINE)
 		return -ENODEV;
 
-#ifndef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
 	ret = wait_event_interruptible_timeout(dev->intr_wq,
 			(req = mtp_req_get(dev, &dev->intr_idle)),
 			msecs_to_jiffies(1000));
-#else
-	req = mtp_req_get(dev, &dev->intr_idle);
-#endif
 	if (!req)
-#ifndef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
 		return -ETIME;
-#else
-		return -EBUSY;
-#endif
 
 	if (copy_from_user(req->buf, (void __user *)event->data, length)) {
 		mtp_req_put(dev, &dev->intr_idle, req);
@@ -1086,11 +1065,6 @@ static int mtp_send_event(struct mtp_dev *dev, struct mtp_event *event)
 	ret = usb_ep_queue(dev->ep_intr, req, GFP_KERNEL);
 	if (ret)
 		mtp_req_put(dev, &dev->intr_idle, req);
-
-#ifdef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
-	mtp_log("exit: (%d)\n", ret);
-#endif
 
 	return ret;
 }
@@ -1102,11 +1076,6 @@ static long mtp_send_receive_ioctl(struct file *fp, unsigned int code,
 	struct file *filp = NULL;
 	struct work_struct *work;
 	int ret = -EINVAL;
-
-#ifdef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
-	mtp_log("entering ioctl with state: %d\n", dev->state);
-#endif
 
 	if (mtp_lock(&dev->ioctl_excl)) {
 		mtp_log("ioctl returning EBUSY state:%d\n", dev->state);
@@ -1143,11 +1112,6 @@ static long mtp_send_receive_ioctl(struct file *fp, unsigned int code,
 	/* make sure write is done before parameters are read */
 	smp_wmb();
 
-#ifdef VENDOR_EDIT
-//yan.chen@Swdp.shanghai, 2015/12/3, add mtp callback for hyp
-	atomic_notifier_call_chain(&mtp_rw_notifier, code, (void *)&mfr);
-#endif
-
 	if (code == MTP_SEND_FILE_WITH_HEADER) {
 		work = &dev->send_file_work;
 		dev->xfer_send_header = 1;
@@ -1168,10 +1132,6 @@ static long mtp_send_receive_ioctl(struct file *fp, unsigned int code,
 	/* wait for operation to complete */
 	flush_workqueue(dev->wq);
 	fput(filp);
-#ifdef VENDOR_EDIT
-//yan.chen@Swdp.shanghai, 2015/12/3, add mtp callback for hyp
-	atomic_notifier_call_chain(&mtp_rw_notifier, code | 0x8000, (void *)&mfr);
-#endif
 
 	/* read the result */
 	smp_rmb();
@@ -1189,22 +1149,6 @@ out:
 	mtp_log("ioctl returning %d\n", ret);
 	return ret;
 }
-
-#ifdef VENDOR_EDIT
-//yan.chen@Swdp.shanghai, 2015/12/3, add mtp callback for hyp
-int mtp_register_notifier(struct notifier_block *nb)
-{
-	return atomic_notifier_chain_register(&mtp_rw_notifier, nb);
-}
-EXPORT_SYMBOL(mtp_register_notifier);
-
-int mtp_unregister_notifier(struct notifier_block *nb)
-{
-	return atomic_notifier_chain_unregister(&mtp_rw_notifier, nb);
-}
-EXPORT_SYMBOL(mtp_unregister_notifier);
-#endif /*VENDOR_EDIT*/
-
 
 static long mtp_ioctl(struct file *fp, unsigned int code, unsigned long value)
 {
@@ -1748,10 +1692,7 @@ static int __mtp_setup(struct mtp_instance *fi_mtp)
 	spin_lock_init(&dev->lock);
 	init_waitqueue_head(&dev->read_wq);
 	init_waitqueue_head(&dev->write_wq);
-#ifndef VENDOR_EDIT
-/* Hang.Zhao@PSW.BSP.CHG.Basic,2019/12/11, Modify for copying file to otg is slow */
 	init_waitqueue_head(&dev->intr_wq);
-#endif
 	atomic_set(&dev->open_excl, 0);
 	atomic_set(&dev->ioctl_excl, 0);
 	INIT_LIST_HEAD(&dev->tx_idle);

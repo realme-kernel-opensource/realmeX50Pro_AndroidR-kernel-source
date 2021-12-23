@@ -13,6 +13,8 @@
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
 #include "dsi_parser.h"
+#include "sde_dbg.h"
+
 #if defined(OPLUS_FEATURE_PXLW_IRIS5)
 // Pixelworks@MULTIMEDIA.DISPLAY, 2020/06/02, Iris5 Feature
 #include "../../iris/dsi_iris5_api.h"
@@ -21,12 +23,13 @@
 /* Gou shengjun@PSW.MM.Display.LCD.Stability,2018/12/13
  * Add for get boot mode.
 */
-#include <soc/oppo/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 #include "oppo_display_private_api.h"
 #include "oppo_dc_diming.h"
 #include "oppo_onscreenfingerprint.h"
 #include "oppo_aod.h"
 #endif
+
 /**
  * topology is currently defined by a set of following 3 values:
  * 1. num of layer mixers
@@ -97,6 +100,7 @@ static char dsi_dsc_rc_range_max_qp_1_1[][15] = {
 	{12, 12, 13, 14, 15, 15, 15, 16, 17, 18, 19, 20, 21, 21, 23},
 	{7, 8, 9, 10, 11, 11, 11, 12, 13, 13, 14, 14, 15, 15, 16},
 	};
+
 /*
  * DSC 1.1 SCR
  * Rate control - Max QP values for each ratio type in dsi_dsc_ratio_type
@@ -414,6 +418,7 @@ int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		gpio_set_value(r_config->reset_gpio, 0);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
 		DSI_INFO("GPIO pulled low to simulate ESD\n");
 		return 0;
 	}
@@ -427,10 +432,6 @@ static int dsi_panel_reset(struct dsi_panel *panel)
 	struct dsi_panel_reset_config *r_config = &panel->reset_config;
 	int i;
 
-#ifdef OPLUS_BUG_STABILITY
-/* Hu Jie@PSW.MM.Display.Lcd.Stability, 2019-09-27, add log at display key evevnt */
-	pr_err("debug for dsi_panel_reset\n");
-#endif
 #if defined(OPLUS_FEATURE_PXLW_IRIS5)
 // Pixelworks@MULTIMEDIA.DISPLAY, 2020/06/02, Iris5 Feature
 	if (iris_get_feature())
@@ -526,11 +527,6 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 {
 	int rc = 0;
 
-#ifdef OPLUS_BUG_STABILITY
-/* Hu Jie@PSW.MM.Display.Lcd.Stability, 2019-09-27, add log at display key evevnt */
-	pr_err("debug for dsi_panel_power_on\n");
-#endif
-
 	rc = dsi_pwr_enable_regulator(&panel->power_info, true);
 	if (rc) {
 		DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
@@ -556,15 +552,7 @@ static int dsi_panel_power_on(struct dsi_panel *panel)
 
 #ifdef OPLUS_BUG_STABILITY
 /*Song.Gao@PSW.MM.Display.LCD.Stability,2019-12-17 Change reset enable sequence for LCD power on spec.*/
-	if (!strcmp(panel->name,"samsung amb655uv01 amoled fhd+ panel with DSC") ||
-	    !strcmp(panel->name,"boe nt37800 amoled fhd+ panel with DSC")) {
-		usleep_range(10, 11);
-	} else if (!strcmp(panel->name,"samsung ams643xf01 amoled fhd+ panel")){
-		usleep_range(10000, 10100);
-		rc = dsi_panel_reset(panel);
-	} else {
-		rc = dsi_panel_reset(panel);
-	}
+	rc = dsi_panel_reset(panel);
 #endif
 	if (rc) {
 		DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
@@ -592,11 +580,6 @@ exit:
 static int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
-
-#ifdef OPLUS_BUG_STABILITY
-/* Hu Jie@PSW.MM.Display.Lcd.Stability, 2019-09-27, add log at display key evevnt */
-	pr_err("debug for dsi_panel_power_off\n");
-#endif
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
@@ -681,16 +664,12 @@ int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 	cmds = mode->priv_info->cmd_sets[type].cmds;
 	count = mode->priv_info->cmd_sets[type].count;
 	state = mode->priv_info->cmd_sets[type].state;
+	SDE_EVT32(type, state, count);
 
 #ifdef OPLUS_BUG_STABILITY
 /* Gou shengjun@PSW.MM.Display.LCD.Stability,2018/12/13
  * Add for oppo display new structure
 */
-	if (type != DSI_CMD_READ_SAMSUNG_PANEL_REGISTER_ON
-		&& type != DSI_CMD_READ_SAMSUNG_PANEL_REGISTER_OFF) {
-		pr_err("dsi_cmd %s\n", cmd_set_prop_map[type]);
-	}
-
 	if (oppo_seed_backlight) {
 		oppo_cmd_set = oppo_dsi_update_seed_backlight(panel, oppo_seed_backlight, type);
 		if (!IS_ERR_OR_NULL(oppo_cmd_set)) {
@@ -835,12 +814,8 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 		return 0;
 	}
 
-	if (panel->is_hbm_enabled) {
-		if (bl_lvl == 0)
-			oppo_panel_process_dimming_v3(panel, bl_lvl);
-		else
-			return 0;
-	}
+	if (panel->is_hbm_enabled)
+		return 0;
 
 	if (oppo_display_get_hbm_mode()) {
 		return rc;
@@ -856,9 +831,9 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	if (oppo_dimlayer_bl_enabled != oppo_dimlayer_bl_enable_real) {
 		oppo_dimlayer_bl_enable_real = oppo_dimlayer_bl_enabled;
 		if (oppo_dimlayer_bl_enable_real) {
-			pr_err("Enter DC backlight\n");
+			pr_info("Enter DC backlight\n");
 		} else {
-			pr_err("Exit DC backlight\n");
+			pr_info("Exit DC backlight\n");
 		}
 	}
 
@@ -984,6 +959,7 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
+
 	DSI_DEBUG("backlight type:%d lvl:%d\n", bl->type, bl_lvl);
 	switch (bl->type) {
 	case DSI_BACKLIGHT_WLED:
@@ -1462,6 +1438,9 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 		host->t_clk_pre = val;
 		DSI_DEBUG("[%s] t_clk_pre = %d\n", name, val);
 	}
+
+	host->t_clk_pre_extend = utils->read_bool(utils->data,
+						"qcom,mdss-dsi-t-clk-pre-extend");
 
 	host->ignore_rx_eot = utils->read_bool(utils->data,
 						"qcom,mdss-dsi-rx-eot-ignore");
@@ -3628,25 +3607,6 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 	esd_config->esd_enabled = utils->read_bool(utils->data,
 		"qcom,esd-check-enabled");
 
-#ifdef OPLUS_BUG_STABILITY
-/* Gou shengjun@PSW.MM.Display.LCD.Stability,2018/12/13
- * Add for disable esd check while in test mode.
-*/
-	switch(get_boot_mode())
-	{
-		case MSM_BOOT_MODE__RF:
-		case MSM_BOOT_MODE__WLAN:
-		case MSM_BOOT_MODE__FACTORY:
-			esd_config->esd_enabled = 0x0;
-			pr_err("%s force disable esd check while in rf,wlan and factory mode, esd staus: 0x%x\n",
-						__func__, esd_config->esd_enabled);
-			break;
-
-		default:
-			break;
-	}
-#endif /*OPLUS_BUG_STABILITY*/
-
 	if (!esd_config->esd_enabled)
 		return 0;
 
@@ -4472,11 +4432,6 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-/* Hu Jie@PSW.MM.Display.Lcd.Stability, 2019-09-27, add log at display key evevnt */
-	pr_err("debug for dsi_panel_set_lp1\n");
-#endif
-
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
@@ -4521,11 +4476,6 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-/* Hu Jie@PSW.MM.Display.Lcd.Stability, 2019-09-27, add log at display key evevnt */
-	pr_err("debug for dsi_panel_set_lp2\n");
-#endif
-
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
 		goto exit;
@@ -4553,11 +4503,6 @@ int dsi_panel_set_nolp(struct dsi_panel *panel)
 		DSI_ERR("invalid params\n");
 		return -EINVAL;
 	}
-
-#ifdef OPLUS_BUG_STABILITY
-/* Hu Jie@PSW.MM.Display.Lcd.Stability, 2019-09-27, add log at display key evevnt */
-	pr_err("debug for dsi_panel_set_nolp\n");
-#endif
 
 	mutex_lock(&panel->panel_lock);
 	if (!panel->panel_initialized)
@@ -4604,14 +4549,7 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 	}
 
 	mutex_lock(&panel->panel_lock);
-#ifdef OPLUS_BUG_STABILITY
-/*Song.Gao@PSW.MM.Display.LCD.Stability,2019-12-17 Change reset enable sequence for LCD power on spec.*/
-	if (!strcmp(panel->name,"samsung amb655uv01 amoled fhd+ panel with DSC") ||
-	    !strcmp(panel->name,"boe nt37800 amoled fhd+ panel with DSC")) {
-		usleep_range(6000, 6100);
-		dsi_panel_reset(panel);
-#endif /* OPLUS_BUG_STABILITY */
-	}
+
 	if (panel->lp11_init) {
 		rc = dsi_panel_power_on(panel);
 		if (rc) {
@@ -4783,6 +4721,7 @@ int dsi_panel_send_roi_dcs(struct dsi_panel *panel, int ctrl_idx,
 	}
 	DSI_DEBUG("[%s] send roi x %d y %d w %d h %d\n", panel->name,
 			roi->x, roi->y, roi->w, roi->h);
+	SDE_EVT32(roi->x, roi->y, roi->w, roi->h);
 
 	mutex_lock(&panel->panel_lock);
 
@@ -4905,7 +4844,6 @@ int dsi_panel_switch(struct dsi_panel *panel)
 	pr_err("Send DSI_CMD_SET_TIMING_SWITCH cmds\n");
 #else
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
-	pr_err("Send DSI_CMD_SET_TIMING_SWITCH cmds\n");
 #endif
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
@@ -4933,10 +4871,8 @@ int dsi_panel_post_switch(struct dsi_panel *panel)
 			&(panel->cur_mode->priv_info->cmd_sets[DSI_CMD_SET_POST_TIMING_SWITCH]), &panel->cur_mode->timing);
 	else
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_TIMING_SWITCH);
-	pr_err("Send DSI_CMD_SET_POST_TIMING_SWITCH cmds\n");
 #else
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_TIMING_SWITCH);
-	pr_err("Send DSI_CMD_SET_POST_TIMING_SWITCH cmds\n");
 #endif
 
 	if (rc)
@@ -4956,11 +4892,6 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-
-#ifdef OPLUS_BUG_STABILITY
-/* Gou shengjun@PSW.MM.Display.Lcd.Stability, 2018-05-31,add to mark power states*/
-	pr_err("%s\n", __func__);
-#endif
 	mutex_lock(&panel->panel_lock);
 
 #if defined(OPLUS_FEATURE_PXLW_IRIS5)
@@ -5070,12 +5001,6 @@ int dsi_panel_disable(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-#ifdef OPLUS_BUG_STABILITY
-/* Gou shengjun@PSW.MM.Display.Lcd.Stability, 2018-11-21
- * Add to mark power states
-*/
-	pr_err("%s\n", __func__);
-#endif
 	mutex_lock(&panel->panel_lock);
 
 	/* Avoid sending panel off commands when ESD recovery is underway */
@@ -5084,22 +5009,12 @@ int dsi_panel_disable(struct dsi_panel *panel)
 		 * Need to set IBB/AB regulator mode to STANDBY,
 		 * if panel is going off from AOD mode.
 		 */
-
 		if (dsi_panel_is_type_oled(panel) &&
 			(panel->power_mode == SDE_MODE_DPMS_LP1 ||
 			panel->power_mode == SDE_MODE_DPMS_LP2))
 			dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 				"ibb", REGULATOR_MODE_STANDBY);
-
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_OFF);
-	#ifdef OPLUS_BUG_STABILITY
-	/*Mark.Yao@PSW.MM.Display.LCD.Params,2019-12-15 add delay for boe panel when power off from aod */
-		if (!strcmp(panel->oppo_priv.vendor_name,"NT37800")) {
-			if ((panel->power_mode == SDE_MODE_DPMS_LP1 ||
-			     panel->power_mode == SDE_MODE_DPMS_LP2))
-				usleep_range(80000, 81000);
-		}
-	#endif /* VENDOR_EDIT */
 
 	#if defined(OPLUS_FEATURE_PXLW_IRIS5)
 	// Pixelworks@MULTIMEDIA.DISPLAY, 2020/06/02, Panel commands are sent through Iris5 when Iris5 is PT.

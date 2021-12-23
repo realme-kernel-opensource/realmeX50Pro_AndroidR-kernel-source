@@ -65,10 +65,10 @@
 #elif defined(USE_PLATFORM_BUS)
 #include <linux/platform_device.h>
 #endif
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
 #include <linux/msm_drm_notify.h>
 #endif
-#include <soc/oppo/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 #include <linux/version.h>
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 14, 0)
@@ -780,7 +780,7 @@ static int gf_probe(struct platform_device *pdev)
 #endif
 
     gf_dev->notifier = goodix_noti_block;
-#if defined(CONFIG_DRM_MSM)
+#if defined(CONFIG_DRM)
     status = msm_drm_register_client(&gf_dev->notifier);
     if (status == -1) {
         return status;
@@ -793,7 +793,7 @@ static int gf_probe(struct platform_device *pdev)
 #endif
     wake_lock_init(&fp_wakelock, WAKE_LOCK_SUSPEND, "fp_wakelock");
     wake_lock_init(&gf_cmd_wakelock, WAKE_LOCK_SUSPEND, "gf_cmd_wakelock");
-    pr_err("register goodix_fp_ok\n");
+    pr_info("register goodix_fp_ok\n");
     pr_info("version V%d.%d.%02d\n", VER_MAJOR, VER_MINOR, PATCH_LEVEL);
 
     gf_parse_ftm_poweroff_flag(gf_dev);

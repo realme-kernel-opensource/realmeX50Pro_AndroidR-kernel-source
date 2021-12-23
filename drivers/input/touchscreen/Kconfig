@@ -1354,7 +1354,12 @@ config TOUCHSCREEN_SYNAPTICS_TCM
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_tcm.
 
+#ifdef VENDOR_EDIT
+# han hack for oppo touchscreen
 #source "drivers/input/touchscreen/synaptics_tcm/Kconfig"
+
+#source "drivers/input/touchscreen/focaltech_touch/Kconfig"
+#endif
 
 source "drivers/input/touchscreen/nt36xxx/Kconfig"
 

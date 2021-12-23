@@ -25,7 +25,7 @@
 #ifdef VENDOR_EDIT
 /* Jianchao.Shi@PSW.BSP.CHG.Basic, 2018/04/05, sjc Add for charging */
 #include "../../power/oplus/oppo_vooc.h"
-#include <soc/oppo/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 #endif
 
 #define SE_I2C_TX_TRANS_LEN		(0x26C)
@@ -33,11 +33,10 @@
 #define SE_I2C_SCL_COUNTERS		(0x278)
 #define SE_GENI_IOS			(0x908)
 
-#ifdef OPLUS_FEATURE_CHG_BASIC 
+#ifdef OPLUS_FEATURE_CHG_BASIC
 /* Hang.Zhao@PSW.BSP.CHG.Basic,2020/1/10, Modify for i2c error issue */
 #define SE_I2C_NOISE_CANCEL_CTL                (0x234)
 #endif
-
 
 #define SE_I2C_ERR  (M_CMD_OVERRUN_EN | M_ILLEGAL_CMD_EN | M_CMD_FAILURE_EN |\
 			M_GP_IRQ_1_EN | M_GP_IRQ_3_EN | M_GP_IRQ_4_EN)
@@ -991,8 +990,14 @@ static int geni_i2c_xfer(struct i2c_adapter *adap,
 			timeout = wait_for_completion_timeout(&gi2c->xfer, HZ);
 			if (!timeout) {
 				GENI_SE_ERR(gi2c->ipcl, true, gi2c->dev,
-					"Abort\n");
+					"Cancel failed\n");
+				reinit_completion(&gi2c->xfer);
 				geni_abort_m_cmd(gi2c->base);
+				timeout =
+				wait_for_completion_timeout(&gi2c->xfer, HZ);
+				if (!timeout)
+					GENI_SE_ERR(gi2c->ipcl, true, gi2c->dev,
+						"Abort failed\n");
 			}
 		}
 		gi2c->cur_wr = 0;
@@ -1181,8 +1186,6 @@ static int geni_i2c_probe(struct platform_device *pdev)
 #endif
 	if (of_property_read_u32(pdev->dev.of_node, "qcom,clk-freq-out",
 				&gi2c->i2c_rsc.clk_freq_out)) {
-		dev_info(&pdev->dev,
-			"Bus frequency not specified, default to 400KHz.\n");
 		gi2c->i2c_rsc.clk_freq_out = KHz(400);
 	}
 
@@ -1202,6 +1205,9 @@ static int geni_i2c_probe(struct platform_device *pdev)
 	if(ret < 0)
 		gi2c->noise_rjct_support = false;
 #endif
+
+	dev_info(&pdev->dev, "Bus frequency is set to %dHz\n",
+					gi2c->i2c_rsc.clk_freq_out);
 
 	gi2c->irq = platform_get_irq(pdev, 0);
 	if (gi2c->irq < 0) {

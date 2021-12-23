@@ -336,7 +336,7 @@ struct vm_area_struct {
 #endif
 	struct vm_userfaultfd_ctx vm_userfaultfd_ctx;
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-	seqcount_t vm_sequence;
+	seqcount_t vm_sequence;		/* Speculative page fault field */
 	atomic_t vm_ref_count;		/* see vma_get(), vma_put() */
 #endif
 } __randomize_layout;
@@ -359,7 +359,7 @@ struct mm_struct {
 		struct rb_root mm_rb;
 		u64 vmacache_seqnum;                   /* per-thread vmacache */
 #ifdef CONFIG_SPECULATIVE_PAGE_FAULT
-		rwlock_t mm_rb_lock;
+		rwlock_t mm_rb_lock;	/* Speculative page fault field */
 #endif
 #ifdef CONFIG_MMU
 		unsigned long (*get_unmapped_area) (struct file *filp,
@@ -505,19 +505,6 @@ struct mm_struct {
 		atomic_long_t hugetlb_usage;
 #endif
 		struct work_struct async_put_work;
-
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-		/* Kui.Zhang@PSW.TEC.KERNEL.Performance, 2019/03/18,
-		 * reserved vma
-		 */
-		struct vm_area_struct *reserve_vma;
-		struct vm_area_struct *reserve_mmap;
-		struct rb_root reserve_mm_rb;
-		unsigned long reserve_highest_vm_end;
-		int reserve_map_count;
-		int do_reserve_mmap;
-		bool vm_search_two_way;
-#endif
 
 #if IS_ENABLED(CONFIG_HMM)
 		/* HMM needs to track a few things per mm */

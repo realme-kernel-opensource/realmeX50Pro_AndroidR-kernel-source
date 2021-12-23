@@ -6,19 +6,11 @@
 #define __TASK_IO_ACCOUNTING_OPS_INCLUDED
 
 #include <linux/sched.h>
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add task flow info*/
-#include <linux/oppo_iomonitor/iomonitor.h>
-#endif
 
 #ifdef CONFIG_TASK_IO_ACCOUNTING
 static inline void task_io_account_read(size_t bytes)
 {
 	current->ioac.read_bytes += bytes;
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add task flow info*/
-	iomonitor_record_task_io(current, bytes, false);
-#endif
 }
 
 /*
@@ -33,11 +25,6 @@ static inline unsigned long task_io_get_inblock(const struct task_struct *p)
 static inline void task_io_account_write(size_t bytes)
 {
 	current->ioac.write_bytes += bytes;
-#if defined(VENDOR_EDIT) && defined(CONFIG_OPPO_IOMONITOR)
-/* Hank.liu@TECH.PLAT.Storage, 2020-02-18, add task flow info*/
-	iomonitor_record_task_io(current, bytes, true);
-#endif
-
 }
 
 /*

@@ -9,11 +9,8 @@
  *  SCSI_IOCTL_GET_PCI
  */
 #define UFS_IOCTL_QUERY			0x5388
-#ifdef OPLUS_FEATURE_UFSPLUS
-//Jinghua.Yu@BSP.Storage.UFS 2020/06/12, Add TAG for UFS plus
 #if defined(CONFIG_UFSFEATURE)
 #define UFSFEATURE_QUERY_OPCODE	0x5500
-#endif
 #endif
 /**
  * struct ufs_ioctl_query_data - used to transfer data to and from user via

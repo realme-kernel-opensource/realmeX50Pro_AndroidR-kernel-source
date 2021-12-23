@@ -177,7 +177,6 @@ typedef enum {
 #define ADAPTER_TYPE_NORMAL_CHARGE							4
 #define ADAPTER_TYPE_EPP									5
 #define ADAPTER_TYPE_SVOOC_50W								6
-#define ADAPTER_TYPE_PD_65W								7
 
 #define WPC_CHARGE_TYPE_DEFAULT								0
 #define WPC_CHARGE_TYPE_FAST								1
@@ -283,31 +282,12 @@ typedef enum {
 #define WPC_ADJUST_CURRENT_DELAY							0
 #define WPC_SKEW_DETECT_DELAY								2
 
+#define FAN_PWM_PULSE_IN_SILENT_MODE						60
+#define FAN_PWM_PULSE_IN_FASTCHG_MODE						93
+
 #define BPP_CURRENT_INCREASE_TIME							20
 
 #define CHARGEPUMP_DETECT_CNT								40
-
-#define FAN_PWM_PULSE_IN_SILENT_MODE					60
-#define FAN_PWM_PULSE_IN_SILENT_MODE_DEFAULT				52
-
-#define FAN_PWM_PULSE_IN_SILENT_MODE_V01				FAN_PWM_PULSE_IN_SILENT_MODE
-#define FAN_PWM_PULSE_IN_SILENT_MODE_V02				FAN_PWM_PULSE_IN_SILENT_MODE_DEFAULT
-#define FAN_PWM_PULSE_IN_SILENT_MODE_V03_07				FAN_PWM_PULSE_IN_SILENT_MODE_DEFAULT
-#define FAN_PWM_PULSE_IN_SILENT_MODE_V08_15				40
-
-#define FAN_PWM_PULSE_IN_FASTCHG_MODE					93
-#define FAN_PWM_PULSE_IN_FASTCHG_MODE_DEFAULT				80
-#define FAN_PWM_PULSE_IN_FASTCHG_MODE_V01				FAN_PWM_PULSE_IN_FASTCHG_MODE
-#define FAN_PWM_PULSE_IN_FASTCHG_MODE_V02				FAN_PWM_PULSE_IN_FASTCHG_MODE_DEFAULT
-#define FAN_PWM_PULSE_IN_FASTCHG_MODE_V03_07				FAN_PWM_PULSE_IN_FASTCHG_MODE_DEFAULT
-#define FAN_PWM_PULSE_IN_FASTCHG_MODE_V08_15				70
-
-#define DOCK_OAWV01							1
-#define DOCK_OAWV02							2
-#define DOCK_OAWV03							3
-#define DOCK_OAWV07							7
-#define DOCK_OAWV08							8
-#define DOCK_OAWV15							15
 
 enum wireless_mode {
 	WIRELESS_MODE_NULL,
@@ -418,8 +398,6 @@ struct wpc_data{
 	int					fastchg_current_limit;
 	int 				fastchg_allow;
 	int					dock_fan_pwm_pulse;
-	int 					dock_fan_pwm_pulse_fastchg;
-	int 					dock_fan_pwm_pulse_silent;
 	int					dock_led_pwm_pulse;
 	int					BPP_fastchg_current_ma;
 	int					BPP_current_limit;
@@ -476,9 +454,7 @@ struct oppo_p922x_ic{
 	enum wireless_mode wireless_mode;
 	bool disable_charge;
 	int quiet_mode_need;
-	int pre_quiet_mode_need;
-	bool quiet_mode_ack;
-	bool cep_timeout_ack;
+
 
 	int				idt_en_gpio;		//for WPC
 	int				idt_con_gpio;	//for WPC
@@ -526,7 +502,6 @@ struct oppo_p922x_ic{
     struct delayed_work idt_connect_int_work;   //for WPC
     struct delayed_work idt_dischg_work;   //for WPC
     struct delayed_work p922x_self_reset_work;  //for WPC
-	struct delayed_work charger_suspend_work;
     struct wpc_data p922x_chg_status;   //for WPC
     //int         batt_volt_2cell_max;    //for WPC
     //int         batt_volt_2cell_min;    //for WPC

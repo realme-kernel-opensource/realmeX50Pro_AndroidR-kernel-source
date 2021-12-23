@@ -27,28 +27,11 @@
 #elif CONFIG_FB
 #include <linux/notifier.h>
 #include <linux/fb.h>
-#ifdef CONFIG_DRM_MSM
+#ifdef CONFIG_DRM
 #include <linux/msm_drm_notify.h>
 #endif
 #endif
 
-#ifdef CONFIG_OPPO_CHARGER_MTK
-#include <linux/i2c.h>
-//#include <mt-plat/battery_meter.h>
-#include <mt-plat/mtk_boot.h>
-#ifdef CONFIG_OPPO_CHARGER_MTK6779
-#include "charger_ic/oppo_battery_mtk6779.h"
-#endif
-#ifdef CONFIG_OPPO_CHARGER_MTK6779Q
-#include "charger_ic/oppo_battery_mtk6779Q.h"
-#endif
-#ifdef CONFIG_OPPO_CHARGER_MTK6885
-#include "charger_ic/oppo_battery_mtk6885.h"
-#endif
-#ifdef CONFIG_OPPO_CHARGER_MTK6873
-#include "charger_ic/oppo_battery_mtk6873.h"
-#endif
-#else /* CONFIG_OPPO_CHARGER_MTK */
 #include <linux/regulator/driver.h>
 #include <linux/regulator/of_regulator.h>
 #include <linux/regulator/machine.h>
@@ -56,41 +39,9 @@
 #include <linux/qpnp/qpnp-adc.h>
 #include <linux/msm_bcl.h>
 #endif
-#include <soc/oppo/boot_mode.h>
-#ifdef CONFIG_OPPO_MSM8953N_CHARGER
-#include "charger_ic/oppo_battery_msm8953_N.h"
-#elif defined CONFIG_OPPO_MSM8953_CHARGER
-#include "charger_ic/oppo_battery_msm8953.h"
-#elif defined CONFIG_OPPO_MSM8998_CHARGER
-#include "charger_ic/oppo_battery_msm8998.h"
-#elif defined CONFIG_OPPO_MSM8998O_CHARGER
-#include "charger_ic/oppo_battery_msm8998_O.h"
-#elif defined CONFIG_OPPO_SDM845_CHARGER
-#include "charger_ic/oppo_battery_sdm845.h"
-#elif defined CONFIG_OPPO_SDM670_CHARGER
-#include "charger_ic/oppo_battery_sdm670.h"
-#elif defined CONFIG_OPPO_SDM670P_CHARGER
-#include "charger_ic/oppo_battery_sdm670P.h"
-#elif defined CONFIG_OPPO_SM8150_CHARGER
-#include "charger_ic/oppo_battery_msm8150.h"
-#elif defined CONFIG_OPLUS_SM8250_CHARGER
-#include "charger_ic/oplus_battery_msm8250.h"
-#elif defined CONFIG_OPPO_SM8150_PRO_CHARGER
-#include "charger_ic/oppo_battery_msm8150_pro.h"
-#elif defined CONFIG_OPPO_SM6125_CHARGER
-#include "charger_ic/oppo_battery_sm6125P.h"
-#elif defined CONFIG_OPPO_SM7150_CHARGER
-#include "charger_ic/oppo_battery_sm7150_P.h"
-#elif defined CONFIG_OPPO_SDM670Q_CHARGER
-#include "charger_ic/oppo_battery_sdm670Q.h"
-#elif defined CONFIG_OPPO_SM7250_CHARGER
-#include "charger_ic/oppo_battery_msm7250_Q.h"
-#elif defined CONFIG_OPLUS_SM7250R_CHARGER
-#include "charger_ic/oplus_battery_msm7250_R.h"
-#else /* CONFIG_OPPO_MSM8953_CHARGER */
-#include "charger_ic/oppo_battery_msm8976.h"
-#endif /* CONFIG_OPPO_MSM8953_CHARGER */
-#endif /* CONFIG_OPPO_CHARGER_MTK */
+#include <soc/oplus/boot_mode.h>
+
+#include "../supply/qcom/smb5-lib.h"
 
 #define CHG_LOG_CRTI 1
 #define CHG_LOG_FULL 2
@@ -160,10 +111,10 @@
 #define SMART_NORMAL_CHARGER_1500MA	0X8000
 
 #define chg_debug(fmt, ...) \
-        printk(KERN_NOTICE "[OPPO_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
+		printk(KERN_DEBUG "[OPPO_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
 
 #define chg_err(fmt, ...) \
-        printk(KERN_ERR "[OPPO_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
+		printk(KERN_ERR "[OPPO_CHG][%s]"fmt, __func__, ##__VA_ARGS__)
 
 typedef enum {
 	CHG_NONE = 0,
@@ -205,16 +156,14 @@ typedef enum {
 	LED_TEMP_STATUS__NORMAL = 0,		/*<=35c*/
 	LED_TEMP_STATUS__WARM,				/*>35 && <=37C*/
 	LED_TEMP_STATUS__HIGH,				/*>37C*/
-}
-OPPO_CHG_TLED_STATUS;
+}OPPO_CHG_TLED_STATUS;
 
 typedef enum {
 	FFC_TEMP_STATUS__NORMAL = 0,			/*<=35c*/
 	FFC_TEMP_STATUS__WARM,					/*>35 && <=40C*/
 	FFC_TEMP_STATUS__HIGH,					/*>40C*/
 	FFC_TEMP_STATUS__LOW,					/*<16C*/
-}
-OPPO_CHG_FFC_TEMP_STATUS;
+}OPPO_CHG_FFC_TEMP_STATUS;
 
 typedef enum {
 	CRITICAL_LOG_NORMAL = 0,
@@ -248,6 +197,11 @@ typedef enum {
 	VOOC_TEMP_STATUS__WARM,			/*>34 && <=38C*/
 	VOOC_TEMP_STATUS__HIGH,			/*>38 && <=45C*/
 }OPPO_CHG_TBAT_VOOC_STATUS;
+
+enum skip_reason {
+	REASON_OTG_ENABLED	= BIT(0),
+	REASON_FLASH_ENABLED	= BIT(1)
+};
 
 struct tbatt_anti_shake {
 	int cold_bound;
@@ -460,7 +414,6 @@ struct normalchg_gpio_pinctrl {
 	struct pinctrl_state *chargerid_adc_default;
 };
 
-
 struct short_c_batt_data {
 	int short_c_bat_cv_mv;
 	int batt_chging_cycle_threshold;
@@ -503,6 +456,30 @@ struct short_c_batt_data {
 	bool shortc_gpio_status;
 };
 
+struct smb5;
+
+struct qcom_pmic {
+	struct smb5 *smb5_chip;
+	struct iio_channel      *pm8150b_vadc_dev;
+	struct iio_channel      *pm8150b_usbtemp_vadc_dev;
+
+	/* for complie*/
+	bool                    otg_pulse_skip_dis;
+	int                     pulse_cnt;
+	unsigned int    therm_lvl_sel;
+	bool                    psy_registered;
+	int                     usb_online;
+
+	/* copy from msm8976_pmic begin */
+	int                     bat_charging_state;
+	bool                    suspending;
+	bool                    aicl_suspend;
+	bool                    usb_hc_mode;
+	int             usb_hc_count;
+	bool                    hc_mode_flag;
+	/* copy form msm8976_pmic end */
+};
+
 struct oppo_chg_chip {
 	struct i2c_client *client;
 	struct device *dev;
@@ -525,7 +502,6 @@ struct oppo_chg_chip {
 	struct delayed_work update_work;
 	struct delayed_work  ui_soc_decimal_work;
 	struct delayed_work  mmi_adapter_in_work;
-	struct delayed_work  reset_adapter_work;
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0))
 	struct wake_lock suspend_lock;
 #else
@@ -538,13 +514,10 @@ struct oppo_chg_chip {
 	bool wireless_support;
 	bool charger_exist;
 	int charger_type;
-	int real_charger_type;
 	int charger_volt;
 	int charger_volt_pre;
 	int sw_full_count;
 	bool sw_full;
-	bool hw_full_by_sw;
-	bool hw_full;
 	int temperature;
 	int offset_temp;
 	int batt_volt;
@@ -658,8 +631,6 @@ struct oppo_chg_chip {
 	int pd_chging;
 };
 
-
-
 struct oppo_chg_operations {
 	void (*dump_registers)(void);
 	int (*kick_wdt)(void);
@@ -686,7 +657,6 @@ struct oppo_chg_operations {
 	int (*get_charger_volt)(void);
 	int (*get_ibus)(void);
 	int (*get_charger_current)(void);
-	int (*get_real_charger_type)(void);
 	int (*get_chargerid_volt)(void);
 	void (*set_chargerid_switch_val)(int value);
 	int (*get_chargerid_switch_val)(void);
@@ -728,12 +698,9 @@ struct oppo_chg_operations {
 	void (*oppo_chg_wdt_enable)(bool wdt_enable);
 };
 
-
 /*********************************************
  * power_supply usb/ac/battery functions
  **********************************************/
-
-
 extern int oppo_usb_get_property(struct power_supply *psy,
 	enum power_supply_property psp,
 	union power_supply_propval *val);
@@ -753,8 +720,6 @@ extern int oppo_battery_set_property(struct power_supply *psy,
 extern int oppo_battery_get_property(struct power_supply *psy,
 	enum power_supply_property psp,
 	union power_supply_propval *val);
-
-
 
 /*********************************************
  * oppo_chg_init - initialize oppo_chg_chip
@@ -807,7 +772,6 @@ int oppo_chg_get_charger_voltage(void);
 int oplus_chg_update_voltage(void);
 
 void oppo_chg_set_chargerid_switch_val(int value);
-int oppo_chg_get_chargerid_switch_val(void);
 void oppo_chg_turn_on_charging(struct oppo_chg_chip *chip);
 int oppo_chg_get_cool_down_status(void);
 void oppo_smart_charge_by_cool_down(struct oppo_chg_chip *chip, int val);
@@ -832,6 +796,27 @@ int oppo_chg_get_tbatt_status(void);
 bool oppo_chg_wake_up_ui_soc_decimal(void);
 void oppo_chg_ui_soc_decimal_init(void);
 bool oppo_chg_get_boot_completed(void);
-void oppo_chg_reset_adapter(void);
-
+#ifdef OPLUS_FEATURE_CHG_BASIC
+void oppo_clear_usb_status(int status);
+bool oppo_ccdetect_check_is_gpio(struct oppo_chg_chip *chip);
+void oppo_set_usb_status(int status);
+void oppo_clear_usb_status(int status);
+int oppo_get_usb_status(void);
+int oppo_chg_get_charger_type(void);
+int oppo_wrx_otg_gpio_init(struct oppo_chg_chip *chip);
+int oppo_wrx_en_gpio_init(struct oppo_chg_chip *chip);
+int oppo_otg_en_gpio_init(struct oppo_chg_chip *chip);
+int oppo_idt_en_gpio_init(struct oppo_chg_chip *chip);
+bool oppo_wired_conn_check_is_gpio(struct oppo_chg_chip *chip);
+int oppo_wired_conn_gpio_init(struct oppo_chg_chip *chip);
+bool oppo_check_pdphy_ready(void);
+void oppo_wired_conn_irq_register(struct oppo_chg_chip *chip);
+void oppo_wired_conn_irq_init(struct oppo_chg_chip *chip);
+void oppo_wake_up_usbtemp_thread(void);
+int oppo_ccdetect_get_power_role(void);
+bool oppo_get_otg_switch_status(void);
+void oppo_ccdetect_disable(void);
+void oppo_usbtemp_clear_dischg(struct oppo_chg_chip *chip);
+void oppo_ccdetect_enable(void);
+#endif
 #endif /*_OPPO_CHARGER_H_*/

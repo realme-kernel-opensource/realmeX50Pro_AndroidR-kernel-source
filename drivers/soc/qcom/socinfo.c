@@ -22,8 +22,6 @@
 #include <linux/soc/qcom/smem.h>
 #include <soc/qcom/boot_stats.h>
 
-#include <soc/oplus/system/oppo_project.h>
-
 #define BUILD_ID_LENGTH 32
 #define CHIP_ID_LENGTH 32
 #define SMEM_IMAGE_VERSION_BLOCKS_COUNT 32
@@ -231,16 +229,6 @@ static union {
 /* max socinfo format version supported */
 #define MAX_SOCINFO_FORMAT SOCINFO_VERSION(0, 15)
 
-#ifdef OPLUS_ARCH_EXTENDS	
-/*xing.xiong@BSP.Kernel.Driver, 2019/11/04, Add for fake cpu id*/
-static char *fake_cpu_id = "SM8150";
-#ifdef CONFIG_ARCH_LITO
-static char *real_cpu_id = "SDM765G 5G";
-#else
-static char *real_cpu_id = "SM8250";
-#endif /*CONFIG_ARCH_LITO*/
-#endif /*OPLUS_ARCH_EXTENDS*/
-
 static struct msm_soc_info cpu_of_id[] = {
 	[0]  = {MSM_CPU_UNKNOWN, "Unknown CPU"},
 	/* 8960 IDs */
@@ -336,12 +324,11 @@ static struct msm_soc_info cpu_of_id[] = {
 	[455] = {MSM_CPU_KONA, "KONA"},
 
 	/* Lito ID */
-#ifdef OPLUS_ARCH_EXTENDS
-/*xing.xiong@BSP.Kernel.Driver, 2019/11/04, Add for fake cpu id*/
-	[400] = {MSM_CPU_LITO, "SDM765G 5G"},
-#else
 	[400] = {MSM_CPU_LITO, "LITO"},
-#endif
+	[440] = {MSM_CPU_LITO, "LITO"},
+
+	/* Orchid ID */
+	[476] = {MSM_CPU_ORCHID, "ORCHID"},
 
 	/* Bengal ID */
 	[417] = {MSM_CPU_BENGAL, "BENGAL"},
@@ -359,24 +346,22 @@ static struct msm_soc_info cpu_of_id[] = {
 	[441] = {MSM_CPU_SCUBA, "SCUBA"},
 	[471] = {MSM_CPU_SCUBA, "SCUBA"},
 
-	/* QCM4290 ID */
-	[469] = {MSM_CPU_QCM4290, "QCM4290"},
+	/* Scuba IIOT  ID */
+	[473] = {MSM_CPU_SCUBAIOT, "SCUBAIIOT"},
+	[474] = {MSM_CPU_SCUBAPIOT, "SCUBAPIIOT"},
 
-	/* QCS4290 ID */
-	[470] = {MSM_CPU_QCS4290, "QCS4290"},
+	/* BENGAL-IOT ID */
+	[469] = {MSM_CPU_BENGAL_IOT, "BENGAL-IOT"},
+
+	/* BENGALP-IOT ID */
+	[470] = {MSM_CPU_BENGALP_IOT, "BENGALP-IOT"},
 
 	/* Uninitialized IDs are not known to run Linux.
 	 * MSM_CPU_UNKNOWN is set to 0 to ensure these IDs are
 	 * considered as unknown CPU.
 	 */
 };
-#ifdef OPLUS_ARCH_EXTENDS
-/* tongfeng.huang@BSP.CHG.Basic, 2020/01/01, add for  19125 */
-static struct msm_soc_info cpu_of_id_19125 = {
-	.generic_soc_type = MSM_CPU_LITO,
-	.soc_id_string = "SDM765 5G"
-};
-#endif
+
 static enum msm_cpu cur_cpu;
 static int current_image;
 static uint32_t socinfo_format;
@@ -394,12 +379,6 @@ EXPORT_SYMBOL(socinfo_get_id);
 
 char *socinfo_get_id_string(void)
 {
-#ifdef OPLUS_ARCH_EXTENDS
-/* tongfeng.huang@BSP.CHG.Basic, 2020/01/01, add for  19125 */
-	if((get_project() == 19125) ||(get_project() == 19126)){
-		return cpu_of_id_19125.soc_id_string;
-	}
-#endif
 	return (socinfo) ? cpu_of_id[socinfo->v0_1.id].soc_id_string : NULL;
 }
 EXPORT_SYMBOL(socinfo_get_id_string);
@@ -426,17 +405,9 @@ static char *msm_read_hardware_id(void)
 		goto err_path;
 	if (!cpu_of_id[socinfo->v0_1.id].soc_id_string)
 		goto err_path;
-#ifdef OPLUS_ARCH_EXTENDS
-/* tongfeng.huang@BSP.CHG.Basic, 2020/01/01, add for  19125 */
-	if((get_project() == 19125) ||(get_project() == 19126)){
-		ret = strlcat(msm_soc_str, cpu_of_id_19125.soc_id_string,
-				sizeof(msm_soc_str));
-	}
-	else{
-#endif
-		ret = strlcat(msm_soc_str, cpu_of_id[socinfo->v0_1.id].soc_id_string,
-				sizeof(msm_soc_str));
-	}
+
+	ret = strlcat(msm_soc_str, cpu_of_id[socinfo->v0_1.id].soc_id_string,
+			sizeof(msm_soc_str));
 	if (ret > sizeof(msm_soc_str))
 		goto err_path;
 
@@ -1256,6 +1227,10 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 400;
 		strlcpy(dummy_socinfo.build_id, "lito - ",
 		sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_orchid()) {
+		dummy_socinfo.id = 476;
+		strlcpy(dummy_socinfo.build_id, "orchid - ",
+		sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_bengal()) {
 		dummy_socinfo.id = 417;
 		strlcpy(dummy_socinfo.build_id, "bengal - ",
@@ -1271,6 +1246,14 @@ static void * __init setup_dummy_socinfo(void)
 	} else if (early_machine_is_scuba()) {
 		dummy_socinfo.id = 441;
 		strlcpy(dummy_socinfo.build_id, "scuba - ",
+		sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_scubaiot()) {
+		dummy_socinfo.id = 473;
+		strlcpy(dummy_socinfo.build_id, "scubaiot - ",
+		sizeof(dummy_socinfo.build_id));
+	} else if (early_machine_is_scubapiot()) {
+		dummy_socinfo.id = 474;
+		strlcpy(dummy_socinfo.build_id, "scubapiot - ",
 		sizeof(dummy_socinfo.build_id));
 	} else if (early_machine_is_sdmshrike()) {
 		dummy_socinfo.id = 340;
@@ -1292,13 +1275,13 @@ static void * __init setup_dummy_socinfo(void)
 		dummy_socinfo.id = 365;
 		strlcpy(dummy_socinfo.build_id, "sdmmagpie - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_qcm4290()) {
+	} else if (early_machine_is_bengal_iot()) {
 		dummy_socinfo.id = 469;
-		strlcpy(dummy_socinfo.build_id, "qcm4290 - ",
+		strlcpy(dummy_socinfo.build_id, "bengal-iot - ",
 		sizeof(dummy_socinfo.build_id));
-	} else if (early_machine_is_qcs4290()) {
+	} else if (early_machine_is_bengalp_iot()) {
 		dummy_socinfo.id = 470;
-		strlcpy(dummy_socinfo.build_id, "qcs4290 - ",
+		strlcpy(dummy_socinfo.build_id, "bengalp-iot - ",
 		sizeof(dummy_socinfo.build_id));
 	} else
 		strlcat(dummy_socinfo.build_id, "Dummy socinfo",
@@ -1663,28 +1646,6 @@ int __init socinfo_init(void)
 		pr_warn("New IDs added! ID => CPU mapping needs an update.\n");
 
 	cur_cpu = cpu_of_id[socinfo->v0_1.id].generic_soc_type;
-#ifdef OPLUS_ARCH_EXTENDS
-/*xing.xiong@BSP.Kernel.Driver, 2019/11/04, Add for fake cpu id*/
-	if (is_confidential()) {
-#if defined(CONFIG_ARCH_LITO)
-		if((get_project() == 19191) || (get_project() == 19192)
-			|| (get_project() == 19015) || (get_project() == 19016)
-			|| (get_project() == 19591) || (get_project() == 19525)
-			|| (get_project() == 19101) || (get_project() == 19102)
-			|| (get_project() == 19501) || (get_project() == 19125)
-			|| (get_project() == 19126) || (get_project() == 19127)
-			|| (get_project() == 19128) || (get_project() == 19521)
-			|| (get_project() == 19335))
-			cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id;
-		else
-			cpu_of_id[socinfo->v0_1.id].soc_id_string = fake_cpu_id;
-#else
-		cpu_of_id[socinfo->v0_1.id].soc_id_string = fake_cpu_id;
-#endif
-	} else {
-		cpu_of_id[socinfo->v0_1.id].soc_id_string = real_cpu_id;
-	}
-#endif
 	boot_stats_init();
 	socinfo_print();
 	arch_read_hardware_id = msm_read_hardware_id;

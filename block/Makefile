@@ -40,7 +40,3 @@ obj-$(CONFIG_BLK_SED_OPAL)	+= sed-opal.o
 obj-$(CONFIG_BLK_INLINE_ENCRYPTION)	+= keyslot-manager.o bio-crypt-ctx.o \
 					   blk-crypto.o
 obj-$(CONFIG_BLK_INLINE_ENCRYPTION_FALLBACK)	+= blk-crypto-fallback.o
-#ifdef OPLUS_FEATURE_UIFIRST
-#/*Huacai.Zhou@BSP.Kernel.IO, 2020-06-12,add ux io first opt*/
-obj-$(CONFIG_OPLUS_FEATURE_UXIO_FIRST)	+= oppo_uxio_first/
-#endif /*OPLUS_FEATURE_UIFIRST*/

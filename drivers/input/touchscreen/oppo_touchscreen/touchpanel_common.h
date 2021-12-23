@@ -27,7 +27,7 @@
 #include <linux/firmware.h>
 #include <linux/kthread.h>
 #include <linux/uaccess.h>
-#include <soc/oppo/device_info.h>
+#include <soc/oplus/device_info.h>
 #include <linux/delay.h>
 #include <linux/jiffies.h>
 #include "touchpanel_prevention.h"
@@ -41,7 +41,7 @@
 #ifdef CONFIG_TOUCHPANEL_MTK_PLATFORM
 #include<mt-plat/mtk_boot_common.h>
 #else
-#include <soc/oppo/boot_mode.h>
+#include <soc/oplus/boot_mode.h>
 #endif
 
 #define EFTM (250)
@@ -56,10 +56,10 @@
 
 #define UnkownGesture       0
 #define DouTap              1   // double tap
-#define UpVee               2   // V
-#define DownVee             3   // ^
-#define LeftVee             4   // >
-#define RightVee            5   // <
+#define UpVee               2   // ^
+#define DownVee             3   // v
+#define LeftVee             4   // <
+#define RightVee            5   // >
 #define Circle              6   // O
 #define DouSwip             7   // ||
 #define Left2RightSwip      8   // -->
@@ -68,9 +68,24 @@
 #define Down2UpSwip         11  // |^
 #define Mgestrue            12  // M
 #define Wgestrue            13  // W
-#define FingerprintDown     14
-#define FingerprintUp       15
-#define SingleTap           16
+#define SingleTap           15  // single tap
+#define FingerprintDown     16
+#define FingerprintUp       17
+
+#define KEY_GESTURE_W               246
+#define KEY_GESTURE_M               247
+#define KEY_DOUBLE_TAP              KEY_WAKEUP
+#define KEY_GESTURE_CIRCLE          249
+#define KEY_GESTURE_TWO_SWIPE       250
+#define KEY_GESTURE_UP_ARROW        251
+#define KEY_GESTURE_DOWN_ARROW      252
+#define KEY_GESTURE_LEFT_ARROW      253
+#define KEY_GESTURE_RIGHT_ARROW     254
+#define KEY_GESTURE_SWIPE_UP        KEY_F8
+#define KEY_GESTURE_SWIPE_DOWN      KEY_F6
+#define KEY_GESTURE_SWIPE_LEFT      KEY_F5
+#define KEY_GESTURE_SWIPE_RIGHT     KEY_F7
+#define KEY_GESTURE_SINGLE_TAP      255
 
 #define FINGERPRINT_DOWN_DETECT 0X0f
 #define FINGERPRINT_UP_DETECT 0X1f
@@ -599,7 +614,6 @@ struct touchpanel_data {
     bool ps_status;                                     /*save ps status, ps near = 1, ps far = 0*/
     bool resume_finished;                               /* whether tp resume finished */
     int noise_level;                                     /*save ps status, ps near = 1, ps far = 0*/
-    int lcd_fps;                                         /*save lcd refresh*/
 
 #if defined(TPD_USE_EINT)
     struct hrtimer         timer;                       /*using polling instead of IRQ*/
@@ -635,9 +649,6 @@ struct touchpanel_data {
     struct workqueue_struct *async_workqueue;
     struct work_struct     fw_update_work;             /*using for fw update*/
 
-    struct work_struct     tp_refresh_work;            /*using for tp_refresh resume*/
-    struct workqueue_struct *tp_refresh_wq;            /*using for tp_refresh wq*/
-
     struct esd_information  esd_info;
     struct freq_hop_info    freq_hop_info;
     struct spurious_fp_touch spuri_fp_touch;           /*spurious_finger_support*/
@@ -671,7 +682,6 @@ struct touchpanel_data {
     int curved_size;                                    /*curved size of panel for OS sidebar setting*/
     u32 smooth_level;
     bool smooth_level_support;
-    bool sensitive_level_array_support;
 
 #ifdef CONFIG_OPPO_TP_APK
     APK_OPERATION *apk_op;
@@ -750,7 +760,7 @@ struct oppo_touchpanel_operations {
 #ifdef CONFIG_TOUCHPANEL_ALGORITHM
     int  (*special_points_report)     (void *chip_data, struct point_info *points, int max_num);
 #endif
-    int  (*tp_refresh_switch)         (void *chip_data, int fps);
+    int  (*tp_refresh_switch)         (void *chip_data, int fps, int is_suspended);
 };
 
 struct aging_test_proc_operations {

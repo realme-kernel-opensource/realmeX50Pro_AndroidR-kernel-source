@@ -391,12 +391,6 @@
 			reg = <0x0 0x86a00000 0x0 0x500000>;
 		};
 
-		pil_cvp_mem: pil_cvp_region@86f00000 {
-			compatible = "removed-dma-pool";
-			no-map;
-			reg = <0x0 0x86f00000 0x0 0x500000>;
-		};
-
 		pil_cdsp_mem: pil_cdsp_region@87400000 {
 			compatible = "removed-dma-pool";
 			no-map;
@@ -575,6 +569,7 @@
 
 	bluetooth: bt_wcn3990 {
 		compatible = "qca,wcn3990";
+		qca,bt-sw-ctrl-gpio = <&tlmm 73 0>; /* SW_CTRL */
 		qca,bt-vdd-io-supply = <&pm8150_s4>;
 		qca,bt-vdd-core-supply = <&pm8150a_l2>;
 		qca,bt-vdd-pa-supply = <&pm8150a_l10>;
@@ -2115,20 +2110,6 @@
 		qcom,client-id = <0x00000001>;
 	};
 
-    //#ifdef VENDOR_EDIT
-    //Zhengpeng.Tan@NW.AP.NV.892767, 2016/11/30
-    //#ifdef FEATURE_OPPO_NV_BACKUP
-    //add for creating a shared memory with uio for nv backup and restore
-    qcom,oembackup_sharedmem@0 {
-        compatible = "qcom,sharedmem-uio";
-        reg = <0x0 0x00100000>;
-        reg-names = "oembackup";
-        qcom,client-id = <0x00000004>;
-        qcom,guard-memory;
-    };
-    //#endif /* FEATURE_OPPO_NV_BACKUP */
-    //#endif /* VENDOR_EDIT */	
-
 	ipcc_mproc: qcom,ipcc@408000 {
 		compatible = "qcom,ipcc";
 		reg = <0x408000 0x1000>;
@@ -2940,10 +2921,6 @@
 		qcom,fastrpc-adsp-audio-pdr;
 		qcom,fastrpc-adsp-sensors-pdr;
 		qcom,rpc-latency-us = <235>;
-		/* ifdef VENDOR_EDIT */
-		/* Tianheng.Wang@Camera.Driver, 2021/02/17, add for camera xdsp, KBA-180627141440 */
-		qcom,secure-domains = <0x0F>;
-		/* endif */
 		qcom,qos-cores = <0 1 2 3 4 5>;
 
 		qcom,msm_fastrpc_compute_cb1 {

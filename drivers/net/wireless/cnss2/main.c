@@ -12,19 +12,6 @@
 #include <linux/suspend.h>
 #include <linux/timer.h>
 #include <soc/qcom/minidump.h>
-#include <soc/qcom/ramdump.h>
-#include <soc/qcom/subsystem_notif.h>
-#ifdef OPLUS_BUG_STABILITY
-//Laixin@CN.PSW.WiFi.Basic.2828376, 2020/02/19
-//Add for: disable wifi while power off charging because modem img will not mount
-#include <soc/oppo/boot_mode.h>
-#endif /* OPLUS_BUG_STABILITY */
-
-#ifdef CONFIG_OPLUS_KEVENT_UPLOAD
-//LiFenfen@CONNECTIVITY.WIFI.HARDWARE.CRASH.1162003, 2020/12/08
-//Add for: pcie self recovery statistics
-#include <linux/oplus_kevent.h>
-#endif /* CONFIG_OPLUS_KEVENT_UPLOAD */
 
 #include "main.h"
 #include "bus.h"
@@ -37,7 +24,7 @@
 #define CNSS_DUMP_NAME			"CNSS_WLAN"
 #define CNSS_DUMP_DESC_SIZE		0x1000
 #define CNSS_DUMP_SEG_VER		0x1
-#define WLAN_RECOVERY_DELAY		1000
+#define RECOVERY_DELAY_MS		100
 #define FILE_SYSTEM_READY		1
 #define FW_READY_TIMEOUT		20000
 #define FW_ASSERT_TIMEOUT		5000
@@ -77,45 +64,6 @@ struct cnss_driver_event {
 	int ret;
 	void *data;
 };
-
-#ifdef CONFIG_OPLUS_KEVENT_UPLOAD
-//LiFenfen@CONNECTIVITY.WIFI.HARDWARE.CRASH.1162003, 2020/12/08
-//Add for: pcie self recovery statistics
-int cnss_stats_self_recovery(void)
-{
-	const char* cnss_event_tag = "wifi_fool_proof";
-	const char* cnss_event_id = "wifi_recovery";
-	const char* cnss_event_payload = "cnss_pcie_self_recovery";
-	struct kernel_packet_info* cnss_event;
-	void *buffer = NULL;
-	int len, size;
-	cnss_pr_err("%s\n", __func__);
-
-	len = strlen(cnss_event_payload);
-	size = sizeof(struct kernel_packet_info) + len + 1;
-
-	buffer = kmalloc(size, GFP_KERNEL);
-	if (!buffer) {
-		cnss_pr_err("%s: Allocation failed\n", __func__);
-		return -ENOMEM;
-	}
-
-	memset(buffer, 0, size);
-	cnss_event = (struct kernel_packet_info *)buffer;
-	cnss_event->type = 1;
-
-	memcpy(cnss_event->log_tag, cnss_event_tag, strlen(cnss_event_tag) + 1);
-	memcpy(cnss_event->event_id, cnss_event_id, strlen(cnss_event_id) + 1);
-
-	cnss_event->payload_length = len + 1;
-	memcpy(cnss_event->payload, cnss_event_payload, cnss_event->payload_length);
-
-	kevent_send_to_user(cnss_event);
-	kfree(buffer);
-
-	return 0;
-}
-#endif /* CONFIG_OPLUS_KEVENT_UPLOAD */
 
 static void cnss_set_plat_priv(struct platform_device *plat_dev,
 			       struct cnss_plat_data *plat_priv)
@@ -253,9 +201,10 @@ int cnss_get_platform_cap(struct device *dev, struct cnss_platform_cap *cap)
 	if (!plat_priv)
 		return -ENODEV;
 
-	if (cap)
-		*cap = plat_priv->cap;
+	if (!cap)
+		return -EINVAL;
 
+	*cap = plat_priv->cap;
 	cnss_pr_dbg("Platform cap_flag is 0x%x\n", cap->cap_flag);
 
 	return 0;
@@ -793,7 +742,7 @@ int cnss_idle_shutdown(struct device *dev)
 
 	reinit_completion(&plat_priv->recovery_complete);
 	ret = wait_for_completion_timeout(&plat_priv->recovery_complete,
-					  RECOVERY_TIMEOUT);
+					  msecs_to_jiffies(RECOVERY_TIMEOUT));
 	if (!ret) {
 		cnss_pr_err("Timeout waiting for recovery to complete\n");
 		CNSS_ASSERT(0);
@@ -844,6 +793,7 @@ static void cnss_put_resources(struct cnss_plat_data *plat_priv)
 	cnss_put_vreg_type(plat_priv, CNSS_VREG_PRIM);
 }
 
+#ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 static int cnss_modem_notifier_nb(struct notifier_block *nb,
 				  unsigned long code,
 				  void *ss_handle)
@@ -1035,6 +985,39 @@ static int cnss_subsys_ramdump(int enable,
 	return cnss_bus_dev_ramdump(plat_priv);
 }
 
+static void cnss_recovery_work_handler(struct work_struct *work)
+{
+}
+#else
+static int cnss_register_esoc(struct cnss_plat_data *plat_priv) { return 0; }
+static void cnss_unregister_esoc(struct cnss_plat_data *plat_priv) { }
+
+static void cnss_recovery_work_handler(struct work_struct *work)
+{
+	struct cnss_plat_data *plat_priv =
+		container_of(work, struct cnss_plat_data, recovery_work);
+
+	if (!plat_priv->recovery_enabled)
+		panic("subsys-restart: Resetting the SoC wlan crashed\n");
+
+	cnss_bus_dev_shutdown(plat_priv);
+	msleep(RECOVERY_DELAY_MS);
+	cnss_bus_dev_powerup(plat_priv);
+}
+
+void cnss_device_crashed(struct device *dev)
+{
+	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
+
+	if (!plat_priv)
+		return;
+
+	set_bit(CNSS_DRIVER_RECOVERY, &plat_priv->driver_state);
+	schedule_work(&plat_priv->recovery_work);
+}
+EXPORT_SYMBOL(cnss_device_crashed);
+#endif /* CONFIG_MSM_SUBSYSTEM_RESTART */
+
 void *cnss_get_virt_ramdump_mem(struct device *dev, unsigned long *size)
 {
 	struct cnss_plat_data *plat_priv = cnss_bus_dev_to_plat_priv(dev);
@@ -1069,9 +1052,6 @@ static const char *cnss_recovery_reason_to_str(enum cnss_recovery_reason reason)
 static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 			    enum cnss_recovery_reason reason)
 {
-	struct cnss_subsys_info *subsys_info =
-		&plat_priv->subsys_info;
-
 	plat_priv->recovery_count++;
 
 	if (plat_priv->device_id == QCA6174_DEVICE_ID)
@@ -1091,6 +1071,14 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 		if (test_bit(LINK_DOWN_SELF_RECOVERY,
 			     &plat_priv->ctrl_params.quirks))
 			goto self_recovery;
+		if (!cnss_bus_recover_link_down(plat_priv)) {
+			/* clear recovery bit here to avoid skipping
+			 * the recovery work for RDDM later
+			 */
+			clear_bit(CNSS_DRIVER_RECOVERY,
+				  &plat_priv->driver_state);
+			return 0;
+		}
 		break;
 	case CNSS_REASON_RDDM:
 		cnss_bus_collect_dump_info(plat_priv, false);
@@ -1104,29 +1092,13 @@ static int cnss_do_recovery(struct cnss_plat_data *plat_priv,
 		break;
 	}
 
-	if (!subsys_info->subsys_device)
-		return 0;
-
-	subsys_set_crash_status(subsys_info->subsys_device, true);
-	subsystem_restart_dev(subsys_info->subsys_device);
+	cnss_bus_device_crashed(plat_priv);
 
 	return 0;
 
 self_recovery:
-	cnss_pr_dbg("Going for self recovery\n");
 	cnss_bus_dev_shutdown(plat_priv);
-
-	if (test_bit(LINK_DOWN_SELF_RECOVERY, &plat_priv->ctrl_params.quirks))
-		clear_bit(LINK_DOWN_SELF_RECOVERY,
-			  &plat_priv->ctrl_params.quirks);
-
 	cnss_bus_dev_powerup(plat_priv);
-
-	#ifdef CONFIG_OPLUS_KEVENT_UPLOAD
-	//LiFenfen@CONNECTIVITY.WIFI.HARDWARE.CRASH.1162003, 2020/12/08
-	//Add for: pcie self recovery statistics
-	cnss_stats_self_recovery();
-	#endif /* CONFIG_OPLUS_KEVENT_UPLOAD */
 
 	return 0;
 }
@@ -1714,6 +1686,7 @@ int cnss_va_to_pa(struct device *dev, size_t size, void *va, dma_addr_t dma,
 	return 0;
 }
 
+#ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 int cnss_register_subsys(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0;
@@ -1765,6 +1738,70 @@ void cnss_unregister_subsys(struct cnss_plat_data *plat_priv)
 	subsys_unregister(subsys_info->subsys_device);
 }
 
+static void *cnss_create_ramdump_device(struct cnss_plat_data *plat_priv)
+{
+	struct cnss_subsys_info *subsys_info = &plat_priv->subsys_info;
+
+	return create_ramdump_device(subsys_info->subsys_desc.name,
+				     subsys_info->subsys_desc.dev);
+}
+
+static void cnss_destroy_ramdump_device(struct cnss_plat_data *plat_priv,
+					void *ramdump_dev)
+{
+	destroy_ramdump_device(ramdump_dev);
+}
+#else
+static int cnss_panic_handler(struct notifier_block *nb, unsigned long action,
+			      void *data)
+{
+	struct cnss_plat_data *plat_priv =
+		container_of(nb, struct cnss_plat_data, panic_nb);
+
+	cnss_bus_dev_crash_shutdown(plat_priv);
+
+	return NOTIFY_DONE;
+}
+
+int cnss_register_subsys(struct cnss_plat_data *plat_priv)
+{
+	int ret;
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	plat_priv->panic_nb.notifier_call = cnss_panic_handler;
+	ret = atomic_notifier_chain_register(&panic_notifier_list,
+					     &plat_priv->panic_nb);
+	if (ret) {
+		cnss_pr_err("Failed to register panic handler\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+void cnss_unregister_subsys(struct cnss_plat_data *plat_priv)
+{
+	int ret;
+
+	ret = atomic_notifier_chain_unregister(&panic_notifier_list,
+					       &plat_priv->panic_nb);
+	if (ret)
+		cnss_pr_err("Failed to unregister panic handler\n");
+}
+
+static void *cnss_create_ramdump_device(struct cnss_plat_data *plat_priv)
+{
+	return &plat_priv->plat_dev->dev;
+}
+
+static void cnss_destroy_ramdump_device(struct cnss_plat_data *plat_priv,
+					void *ramdump_dev)
+{
+}
+#endif /* CONFIG_MSM_SUBSYSTEM_RESTART */
+
 static int cnss_init_dump_entry(struct cnss_plat_data *plat_priv)
 {
 	struct cnss_ramdump_info *ramdump_info;
@@ -1788,12 +1825,10 @@ static int cnss_register_ramdump_v1(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0;
 	struct device *dev;
-	struct cnss_subsys_info *subsys_info;
 	struct cnss_ramdump_info *ramdump_info;
 	u32 ramdump_size = 0;
 
 	dev = &plat_priv->plat_dev->dev;
-	subsys_info = &plat_priv->subsys_info;
 	ramdump_info = &plat_priv->ramdump_info;
 
 	if (of_property_read_u32(dev->of_node, "qcom,wlan-ramdump-dynamic",
@@ -1821,9 +1856,7 @@ static int cnss_register_ramdump_v1(struct cnss_plat_data *plat_priv)
 		goto free_ramdump;
 	}
 
-	ramdump_info->ramdump_dev =
-		create_ramdump_device(subsys_info->subsys_desc.name,
-				      subsys_info->subsys_desc.dev);
+	ramdump_info->ramdump_dev = cnss_create_ramdump_device(plat_priv);
 	if (!ramdump_info->ramdump_dev) {
 		cnss_pr_err("Failed to create ramdump device!");
 		ret = -ENOMEM;
@@ -1847,7 +1880,8 @@ static void cnss_unregister_ramdump_v1(struct cnss_plat_data *plat_priv)
 	ramdump_info = &plat_priv->ramdump_info;
 
 	if (ramdump_info->ramdump_dev)
-		destroy_ramdump_device(ramdump_info->ramdump_dev);
+		cnss_destroy_ramdump_device(plat_priv,
+					    ramdump_info->ramdump_dev);
 
 	if (ramdump_info->ramdump_va)
 		dma_free_coherent(dev, ramdump_info->ramdump_size,
@@ -1858,14 +1892,12 @@ static void cnss_unregister_ramdump_v1(struct cnss_plat_data *plat_priv)
 static int cnss_register_ramdump_v2(struct cnss_plat_data *plat_priv)
 {
 	int ret = 0;
-	struct cnss_subsys_info *subsys_info;
 	struct cnss_ramdump_info_v2 *info_v2;
 	struct cnss_dump_data *dump_data;
 	struct msm_dump_entry dump_entry;
 	struct device *dev = &plat_priv->plat_dev->dev;
 	u32 ramdump_size = 0;
 
-	subsys_info = &plat_priv->subsys_info;
 	info_v2 = &plat_priv->ramdump_info_v2;
 	dump_data = &info_v2->dump_data;
 
@@ -1895,9 +1927,7 @@ static int cnss_register_ramdump_v2(struct cnss_plat_data *plat_priv)
 		goto free_ramdump;
 	}
 
-	info_v2->ramdump_dev =
-		create_ramdump_device(subsys_info->subsys_desc.name,
-				      subsys_info->subsys_desc.dev);
+	info_v2->ramdump_dev = cnss_create_ramdump_device(plat_priv);
 	if (!info_v2->ramdump_dev) {
 		cnss_pr_err("Failed to create ramdump device!\n");
 		ret = -ENOMEM;
@@ -1919,7 +1949,7 @@ static void cnss_unregister_ramdump_v2(struct cnss_plat_data *plat_priv)
 	info_v2 = &plat_priv->ramdump_info_v2;
 
 	if (info_v2->ramdump_dev)
-		destroy_ramdump_device(info_v2->ramdump_dev);
+		cnss_destroy_ramdump_device(plat_priv, info_v2->ramdump_dev);
 
 	kfree(info_v2->dump_data_vaddr);
 	info_v2->dump_data_vaddr = NULL;
@@ -2080,6 +2110,32 @@ static void cnss_unregister_bus_scale(struct cnss_plat_data *plat_priv)
 		msm_bus_scale_unregister_client(bus_bw_info->bus_client);
 }
 
+static ssize_t recovery_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct cnss_plat_data *plat_priv = dev_get_drvdata(dev);
+	unsigned int recovery = 0;
+
+	if (!plat_priv)
+		return -ENODEV;
+
+	if (sscanf(buf, "%du", &recovery) != 1) {
+		cnss_pr_err("Invalid recovery sysfs command\n");
+		return -EINVAL;
+	}
+
+	if (recovery)
+		plat_priv->recovery_enabled = true;
+	else
+		plat_priv->recovery_enabled = false;
+
+	cnss_pr_dbg("%s WLAN recovery, count is %zu\n",
+		    plat_priv->recovery_enabled ? "Enable" : "Disable", count);
+
+	return count;
+}
+
 static ssize_t shutdown_store(struct device *dev,
 			      struct device_attribute *attr,
 			      const char *buf, size_t count)
@@ -2111,13 +2167,13 @@ static ssize_t fs_ready_store(struct device *dev,
 	cnss_pr_dbg("File system is ready, fs_ready is %d, count is %zu\n",
 		    fs_ready, count);
 
-	if (test_bit(QMI_BYPASS, &plat_priv->ctrl_params.quirks)) {
-		cnss_pr_dbg("QMI is bypassed.\n");
+	if (!plat_priv) {
+		cnss_pr_err("plat_priv is NULL!\n");
 		return count;
 	}
 
-	if (!plat_priv) {
-		cnss_pr_err("plat_priv is NULL!\n");
+	if (test_bit(QMI_BYPASS, &plat_priv->ctrl_params.quirks)) {
+		cnss_pr_dbg("QMI is bypassed.\n");
 		return count;
 	}
 
@@ -2143,10 +2199,12 @@ static ssize_t fs_ready_store(struct device *dev,
 
 static DEVICE_ATTR_WO(fs_ready);
 static DEVICE_ATTR_WO(shutdown);
+static DEVICE_ATTR_WO(recovery);
 
 static struct attribute *cnss_attrs[] = {
 	&dev_attr_fs_ready.attr,
 	&dev_attr_shutdown.attr,
+	&dev_attr_recovery.attr,
 	NULL,
 };
 
@@ -2171,23 +2229,21 @@ static int cnss_create_sysfs_link(struct cnss_plat_data *plat_priv)
 	if (ret) {
 		cnss_pr_err("Failed to create shutdown_wlan link, err = %d\n",
 			    ret);
-		goto del_cnss_link;
+		goto rm_cnss_link;
 	}
 
 	return 0;
 
-del_cnss_link:
-	sysfs_delete_link(kernel_kobj, &dev->kobj, "cnss");
+rm_cnss_link:
+	sysfs_remove_link(kernel_kobj, "cnss");
 out:
 	return ret;
 }
 
 static void cnss_remove_sysfs_link(struct cnss_plat_data *plat_priv)
 {
-	struct device *dev = &plat_priv->plat_dev->dev;
-
-	sysfs_delete_link(kernel_kobj, &dev->kobj, "shutdown_wlan");
-	sysfs_delete_link(kernel_kobj, &dev->kobj, "cnss");
+	sysfs_remove_link(kernel_kobj, "shutdown_wlan");
+	sysfs_remove_link(kernel_kobj, "cnss");
 }
 
 static int cnss_create_sysfs(struct cnss_plat_data *plat_priv)
@@ -2274,6 +2330,7 @@ static int cnss_misc_init(struct cnss_plat_data *plat_priv)
 		cnss_pr_err("Failed to init platform device wakeup source, err = %d\n",
 			    ret);
 
+	INIT_WORK(&plat_priv->recovery_work, cnss_recovery_work_handler);
 	init_completion(&plat_priv->power_up_complete);
 	init_completion(&plat_priv->cal_complete);
 	init_completion(&plat_priv->rddm_complete);
@@ -2366,17 +2423,6 @@ static int cnss_probe(struct platform_device *plat_dev)
 	const struct of_device_id *of_id;
 	const struct platform_device_id *device_id;
 
-#ifdef OPLUS_BUG_STABILITY
-	//Laixin@CN.PSW.WiFi.Basic.2828376, 2020/02/19
-	//Add for: disable wifi while power off charging because modem img will not mount
-	if (qpnp_is_power_off_charging() &&
-		(get_boot_mode() != MSM_BOOT_MODE__WLAN) &&
-		(get_boot_mode() != MSM_BOOT_MODE__RF)) {
-		cnss_pr_err("charge mode do not load wifi!\n");
-		goto out;
-	}
-#endif /* OPLUS_BUG_STABILITY */
-
 	if (cnss_get_plat_priv(plat_dev)) {
 		cnss_pr_err("Driver is already initialized!\n");
 		ret = -EEXIST;
@@ -2402,6 +2448,7 @@ static int cnss_probe(struct platform_device *plat_dev)
 	plat_priv->plat_dev = plat_dev;
 	plat_priv->device_id = device_id->driver_data;
 	plat_priv->bus_type = cnss_get_bus_type(plat_priv->device_id);
+	
 	plat_priv->use_nv_mac = cnss_use_nv_mac(plat_priv);
 	plat_priv->use_fw_path_with_prefix =
 		cnss_use_fw_path_with_prefix(plat_priv);

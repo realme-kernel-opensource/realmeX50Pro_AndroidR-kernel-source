@@ -11,6 +11,7 @@
  *  Zone aware kswapd started 02/00, Kanoj Sarcar (kanoj@sgi.com).
  *  Multiqueue VM started 5.8.00, Rik van Riel.
  */
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/mm.h>
@@ -56,26 +57,10 @@
 #include <linux/swapops.h>
 #include <linux/balloon_compaction.h>
 
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-/* Kui.Zhang@PSW.TEC.Kernel.Performance, 2019/02/27
- * collect interrupt doing time during process reclaim, only effect in age test
- */
-#include <linux/process_mm_reclaim.h>
-#endif
-
 #include "internal.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/vmscan.h>
-
-#if defined(OPLUS_FEATURE_ZRAM_OPT) && defined(CONFIG_FG_TASK_UID)
-/*Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-04-28, fix direct reclaim slow issue*/
-#include <linux/oppo_healthinfo/oppo_fg.h>
-#endif /*OPLUS_FEATURE_ZRAM_OPT*/
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_OPPO_MULTI_KSWAPD)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-22,add multi kswapd support*/
-#include <linux/oppo_multi_kswapd.h>
-#endif
 
 struct scan_control {
 	/* How many pages shrink_list() should reclaim */
@@ -151,23 +136,14 @@ struct scan_control {
 	 * on memory until last task zap it.
 	 */
 	struct vm_area_struct *target_vma;
-
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-	/* robin.ren@PSW.BSP.Kernel.Performance, 2019-03-13,
-	 * use mm_walk to regonize the behaviour of process reclaim.
-	 */
-	struct mm_walk *walk;
-#endif
 };
 
-#ifndef CONFIG_OPPO_MULTI_KSWAPD
 /*
  * Number of active kswapd threads
  */
 #define DEF_KSWAPD_THREADS_PER_NODE 1
-//int kswapd_threads = DEF_KSWAPD_THREADS_PER_NODE;
+int kswapd_threads = DEF_KSWAPD_THREADS_PER_NODE;
 int kswapd_threads_current = DEF_KSWAPD_THREADS_PER_NODE;
-#endif /*CONFIG_OPPO_MULTI_KSWAPD*/
 
 #ifdef ARCH_HAS_PREFETCH
 #define prefetch_prev_lru_page(_page, _base, _field)			\
@@ -201,13 +177,6 @@ int kswapd_threads_current = DEF_KSWAPD_THREADS_PER_NODE;
  * From 0 .. 100.  Higher means more swappy.
  */
 int vm_swappiness = 60;
-#if defined(OPLUS_FEATURE_ZRAM_OPT) && defined(CONFIG_OPPO_ZRAM_OPT)
-/*yixue.ge@psw.bsp.kernel 20170720 add for add direct_vm_swappiness*/
-/*
- * Direct reclaim swappiness, exptct 0 - 60. Higher means more swappy and slower.
- */
-int direct_vm_swappiness = 60;
-#endif /*OPLUS_FEATURE_ZRAM_OPT*/
 /*
  * The total number of pages which are beyond the high watermark within all
  * zones.
@@ -1180,12 +1149,6 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		enum page_references references = PAGEREF_RECLAIM;
 		bool dirty, writeback;
 
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-		/* Kui.Zhang@PSW.BSP.Kernel.Performance, 2018-12-25, check whether the
-		 * reclaim process should cancel*/
-		if (sc->walk && is_reclaim_should_cancel(sc->walk))
-			break;
-#endif
 		cond_resched();
 
 		page = lru_to_page(page_list);
@@ -1605,52 +1568,9 @@ unsigned long reclaim_clean_pages_from_list(struct zone *zone,
 	return ret;
 }
 
-#if defined(CONFIG_NANDSWAP)
-unsigned long nswap_reclaim_page_list(struct list_head *page_list,
-					struct vm_area_struct *vma, bool scan)
-{
-	unsigned long nr_reclaimed;
-	unsigned long nr_scan = 0;
-	struct page *page;
-	struct scan_control sc = {
-		.gfp_mask = GFP_KERNEL,
-		.priority = DEF_PRIORITY,
-		.may_writepage = 1,
-		.may_unmap = 1,
-		.may_swap = 1,
-		.target_vma = vma,
-	};
-
-	list_for_each_entry(page, page_list, lru) {
-		ClearPageActive(page);
-	}
-
-	nr_reclaimed = shrink_page_list(page_list, NULL, &sc,
-			TTU_IGNORE_ACCESS, NULL, true);
-
-	while (!list_empty(page_list)) {
-		page = lru_to_page(page_list);
-		if (PageSwapCache(page) && !PageDirty(page))
-			nr_scan++;
-		list_del(&page->lru);
-		dec_node_page_state(page, NR_ISOLATED_ANON +
-				page_is_file_cache(page));
-		putback_lru_page(page);
-	}
-
-	return scan ? nr_scan : nr_reclaimed;
-}
-#endif
-
 #ifdef CONFIG_PROCESS_RECLAIM
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-/* Kui.Zhang@PSW.BSP.Kernel.Performance, 2018-12-25, record the scaned task*/
-unsigned long reclaim_pages_from_list(struct list_head *page_list,
-			struct vm_area_struct *vma, struct mm_walk *walk)
-#else
 unsigned long reclaim_pages_from_list(struct list_head *page_list,
 					struct vm_area_struct *vma)
-#endif
 {
 	struct scan_control sc = {
 		.gfp_mask = GFP_KERNEL,
@@ -1659,10 +1579,6 @@ unsigned long reclaim_pages_from_list(struct list_head *page_list,
 		.may_unmap = 1,
 		.may_swap = 1,
 		.target_vma = vma,
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-		/* Kui.Zhang@PSW.BSP.Kernel.Performance, 2018-12-25, record the scaned task*/
-		.walk = walk,
-#endif
 	};
 
 	unsigned long nr_reclaimed;
@@ -1917,13 +1833,7 @@ int isolate_lru_page(struct page *page)
 	int ret = -EBUSY;
 
 	VM_BUG_ON_PAGE(!page_count(page), page);
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-	/* Kui.Zhang@PSW.TEC.Kernel.Performance, 2019-01-08, Because process reclaim is doing page by
-	 * page, so there many compound pages are relcaimed, so too many warning msg on this case. */
-	WARN_RATELIMIT((!current_is_reclaimer() && PageTail(page)), "trying to isolate tail page");
-#else
 	WARN_RATELIMIT(PageTail(page), "trying to isolate tail page");
-#endif
 
 	if (PageLRU(page)) {
 		struct zone *zone = page_zone(page);
@@ -2043,15 +1953,6 @@ putback_inactive_pages(struct lruvec *lruvec, struct list_head *page_list)
  */
 static int current_may_throttle(void)
 {
-#if defined(OPLUS_FEATURE_ZRAM_OPT) && defined(CONFIG_OPPO_ZRAM_OPT)
-/*Huacai.Zhou@PSW.BSP.Kernel.MM, 2018-04-28, fix direct reclaim slow issue*/
-	if ((current->signal->oom_score_adj < 0)
-#ifdef CONFIG_FG_TASK_UID
-		|| is_fg(current_uid().val)
-#endif
-	   )
-		return 0;
-#endif /*OPLUS_FEATURE_ZRAM_OPT*/
 	return !(current->flags & PF_LESS_THROTTLE) ||
 		current->backing_dev_info == NULL ||
 		bdi_write_congested(current->backing_dev_info);
@@ -2399,14 +2300,8 @@ static bool inactive_list_is_low(struct lruvec *lruvec, bool file,
 		inactive_ratio = 0;
 	} else {
 		gb = (inactive + active) >> (30 - PAGE_SHIFT);
-#if defined(OPLUS_FEATURE_ZRAM_OPT) && defined(CONFIG_OPPO_ZRAM_OPT)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-25, keep more file pages*/
-		if (file && gb)
-			inactive_ratio = min(2UL, int_sqrt(10 * gb));
-#else
 		if (gb)
 			inactive_ratio = int_sqrt(10 * gb);
-#endif /*OPLUS_FEATURE_ZRAM_OPT*/
 		else
 			inactive_ratio = 1;
 	}
@@ -2463,15 +2358,8 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	unsigned long ap, fp;
 	enum lru_list lru;
 
-#if defined(OPLUS_FEATURE_ZRAM_OPT) && defined(CONFIG_OPPO_ZRAM_OPT)
-/*yixue.ge@psw.bsp.kernel 20170720 add for add direct_vm_swappiness*/
-	if (!current_is_kswapd())
-		swappiness = direct_vm_swappiness;
-	if (!sc->may_swap || (mem_cgroup_get_nr_swap_pages(memcg) <= total_swap_pages>>6)) {
-#else
 	/* If we have no swap space, do not bother scanning anon pages. */
 	if (!sc->may_swap || mem_cgroup_get_nr_swap_pages(memcg) <= 0) {
-#endif /*OPLUS_FEATURE_ZRAM_OPT*/
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
@@ -3726,9 +3614,6 @@ static int balance_pgdat(pg_data_t *pgdat, int order, int classzone_idx)
 		.gfp_mask = GFP_KERNEL,
 		.order = order,
 		.may_unmap = 1,
-#ifdef OPLUS_FEATURE_PERFORMANCE
-		.may_swap = 1,
-#endif
 	};
 
 	psi_memstall_enter(&pflags);
@@ -3815,9 +3700,7 @@ restart:
 		 * reclaim will be aborted.
 		 */
 		sc.may_writepage = !laptop_mode && !nr_boost_reclaim;
-#ifndef OPLUS_FEATURE_PERFORMANCE
 		sc.may_swap = !nr_boost_reclaim;
-#endif
 
 		/*
 		 * Do some background aging of the anon list, to give
@@ -4030,12 +3913,7 @@ static void kswapd_try_to_sleep(pg_data_t *pgdat, int alloc_order, int reclaim_o
  * If there are applications that are active memory-allocators
  * (most normal use), this basically shouldn't matter.
  */
- #if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_OPPO_MULTI_KSWAPD)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-22,add multi kswapd support*/
- int kswapd(void *p)
- #else
 static int kswapd(void *p)
-#endif
 {
 	unsigned int alloc_order, reclaim_order;
 	unsigned int classzone_idx = MAX_NR_ZONES - 1;
@@ -4045,17 +3923,7 @@ static int kswapd(void *p)
 	struct reclaim_state reclaim_state = {
 		.reclaimed_slab = 0,
 	};
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_KSWAPD_UNBIND_MAX_CPU)
-	struct cpumask mask;
-	struct cpumask *cpumask = &mask;
-
-	cpumask_copy(cpumask, cpumask_of_node(pgdat->node_id));
-	if (kswapd_unbind_cpu != -1 &&
-			cpumask_test_cpu(kswapd_unbind_cpu, cpumask))
-		cpumask_clear_cpu(kswapd_unbind_cpu, cpumask);
-#else
 	const struct cpumask *cpumask = cpumask_of_node(pgdat->node_id);
-#endif
 
 	if (!cpumask_empty(cpumask))
 		set_cpus_allowed_ptr(tsk, cpumask);
@@ -4223,10 +4091,6 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
    restore their cpu bindings. */
 static int kswapd_cpu_online(unsigned int cpu)
 {
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_OPPO_MULTI_KSWAPD)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-22,add multi kswapd support*/
-	return kswapd_cpu_online_ext(cpu);
-#else
 	int nid, hid;
 	int nr_threads = kswapd_threads_current;
 
@@ -4243,8 +4107,66 @@ static int kswapd_cpu_online(unsigned int cpu)
 		}
 	}
 	return 0;
-#endif
 }
+
+static void update_kswapd_threads_node(int nid)
+{
+	pg_data_t *pgdat;
+	int drop, increase;
+	int last_idx, start_idx, hid;
+	int nr_threads = kswapd_threads_current;
+
+	pgdat = NODE_DATA(nid);
+	last_idx = nr_threads - 1;
+	if (kswapd_threads < nr_threads) {
+		drop = nr_threads - kswapd_threads;
+		for (hid = last_idx; hid > (last_idx - drop); hid--) {
+			if (pgdat->kswapd[hid]) {
+				kthread_stop(pgdat->kswapd[hid]);
+				pgdat->kswapd[hid] = NULL;
+			}
+		}
+	} else {
+		increase = kswapd_threads - nr_threads;
+		start_idx = last_idx + 1;
+		for (hid = start_idx; hid < (start_idx + increase); hid++) {
+			pgdat->kswapd[hid] = kthread_run(kswapd, pgdat,
+						"kswapd%d:%d", nid, hid);
+			if (IS_ERR(pgdat->kswapd[hid])) {
+				pr_err("Failed to start kswapd%d on node %d\n",
+					hid, nid);
+				pgdat->kswapd[hid] = NULL;
+				/*
+				 * We are out of resources. Do not start any
+				 * more threads.
+				 */
+				break;
+			}
+		}
+	}
+}
+
+void update_kswapd_threads(void)
+{
+	int nid;
+
+	if (kswapd_threads_current == kswapd_threads)
+		return;
+
+	/*
+	 * Hold the memory hotplug lock to avoid racing with memory
+	 * hotplug initiated updates
+	 */
+	mem_hotplug_begin();
+	for_each_node_state(nid, N_MEMORY)
+		update_kswapd_threads_node(nid);
+
+	pr_info("kswapd_thread count changed, old:%d new:%d\n",
+		kswapd_threads_current, kswapd_threads);
+	kswapd_threads_current = kswapd_threads;
+	mem_hotplug_done();
+}
+
 
 /*
  * This kswapd start function will be called by init and node-hot-add.
@@ -4252,10 +4174,6 @@ static int kswapd_cpu_online(unsigned int cpu)
  */
 int kswapd_run(int nid)
 {
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_OPPO_MULTI_KSWAPD)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-22,add multi kswapd support*/
-		return kswapd_run_ext(nid);
-#else
 	pg_data_t *pgdat = NODE_DATA(nid);
 	int ret = 0;
 	int hid, nr_threads;
@@ -4278,7 +4196,6 @@ int kswapd_run(int nid)
 	}
 	kswapd_threads_current = nr_threads;
 	return ret;
-#endif
 }
 
 /*
@@ -4287,10 +4204,6 @@ int kswapd_run(int nid)
  */
 void kswapd_stop(int nid)
 {
-#if defined(OPLUS_FEATURE_MULTI_KSWAPD) && defined(CONFIG_OPPO_MULTI_KSWAPD)
-/*Huacai.Zhou@Tech.Kernel.MM, 2020-03-22,add multi kswapd support*/
-	return kswapd_stop_ext(nid);
-#else
 	struct task_struct *kswapd;
 	int hid;
 	int nr_threads = kswapd_threads_current;
@@ -4302,8 +4215,6 @@ void kswapd_stop(int nid)
 			NODE_DATA(nid)->kswapd[hid] = NULL;
 		}
 	}
-#endif
-
 }
 
 static int __init kswapd_init(void)

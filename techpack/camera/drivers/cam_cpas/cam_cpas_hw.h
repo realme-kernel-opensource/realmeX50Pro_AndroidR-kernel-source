@@ -155,6 +155,8 @@ struct cam_cpas_bus_client {
  * @ib_bw: IB bw value for this port
  * @camnoc_bw: CAMNOC bw value for this port
  * @additional_bw: Additional bandwidth to cover non-hw cpas clients
+ * @applied_ab_bw: applied ab bw for this port
+ * @applied_ib_bw: applied ib bw for this port
  */
 struct cam_cpas_axi_port {
 	const char *axi_port_name;
@@ -163,11 +165,10 @@ struct cam_cpas_axi_port {
 	struct device_node *axi_port_node;
 	uint64_t ab_bw;
 	uint64_t ib_bw;
-#ifdef VENDOR_EDIT
-	/*add by Fangyan @Cam.Drv ,2020/03/02, case id :04467032*/
 	uint64_t camnoc_bw;
-#endif
 	uint64_t additional_bw;
+	uint64_t applied_ab_bw;
+	uint64_t applied_ib_bw;
 };
 
 /**
@@ -192,6 +193,7 @@ struct cam_cpas_axi_port {
  * @irq_count_wq: wait variable to ensure all irq's are handled
  * @dentry: debugfs file entry
  * @ahb_bus_scaling_disable: ahb scaling based on src clk corner for bus
+ * @applied_camnoc_axi_rate: applied camnoc axi clock rate
  */
 struct cam_cpas {
 	struct cam_cpas_hw_caps hw_caps;
@@ -200,25 +202,20 @@ struct cam_cpas {
 	struct mutex tree_lock;
 	uint32_t num_clients;
 	uint32_t num_axi_ports;
-#ifdef VENDOR_EDIT
-	/*add by Fangyan @Cam.Drv ,2020/03/02, case id :04467032*/
 	uint32_t num_camnoc_axi_ports;
-#endif
 	uint32_t registered_clients;
 	uint32_t streamon_clients;
 	int32_t regbase_index[CAM_CPAS_REG_MAX];
 	struct cam_cpas_bus_client ahb_bus_client;
 	struct cam_cpas_axi_port axi_port[CAM_CPAS_MAX_AXI_PORTS];
-#ifdef VENDOR_EDIT
-	/*add by Fangyan @Cam.Drv ,2020/03/02, case id :04467032*/
 	struct cam_cpas_axi_port camnoc_axi_port[CAM_CPAS_MAX_AXI_PORTS];
-#endif
 	struct cam_cpas_internal_ops internal_ops;
 	struct workqueue_struct *work_queue;
 	atomic_t irq_count;
 	wait_queue_head_t irq_count_wq;
 	struct dentry *dentry;
 	bool ahb_bus_scaling_disable;
+	uint64_t applied_camnoc_axi_rate;
 };
 
 int cam_camsstop_get_internal_ops(struct cam_cpas_internal_ops *internal_ops);

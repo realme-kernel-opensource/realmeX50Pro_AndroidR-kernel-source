@@ -7,12 +7,7 @@
 
 #include <linux/ipc_logging.h>
 
-#if defined(CONFIG_MHI_DEBUG) && defined(OPLUS_BUG_STABILITY)
-// Bin.Xu@BSP.Kernel.stability,2020-8-5, add for mhi debug enhance
-#define DIAG_IPC_LOG_PAGES      200
-#else
 #define DIAG_IPC_LOG_PAGES	50
-#endif /* CONFIG_MHI_DEBUG and OPLUS_BUG_STABILITY */
 
 #define DIAG_DEBUG_USERSPACE	0x0001
 #define DIAG_DEBUG_MUX		0x0002

@@ -14,12 +14,7 @@ config FS_IOMAP
 	bool
 
 source "fs/ext2/Kconfig"
-#ifdef VENDOR_EDIT
-#Yuwei.Guan@TECH.Storage.FS.OEXT4,2020/04/18, add to use oext4 Kconfig
-source "fs/oext4/Kconfig"
-#else
-#source "fs/ext4/Kconfig"
-#endif
+source "fs/ext4/Kconfig"
 source "fs/jbd2/Kconfig"
 
 config FS_MBCACHE
@@ -37,12 +32,7 @@ source "fs/gfs2/Kconfig"
 source "fs/ocfs2/Kconfig"
 source "fs/btrfs/Kconfig"
 source "fs/nilfs2/Kconfig"
-#ifdef VENDOR_EDIT
-#Yuwei.Guan@TECH.Storage.FS.OF2FS,2020/04/18, add to use of2fs Kconfig
-source "fs/of2fs/Kconfig"
-#else
-#source "fs/f2fs/Kconfig"
-#endif
+source "fs/f2fs/Kconfig"
 
 config FS_DAX
 	bool "Direct Access (DAX) support"
@@ -327,11 +317,6 @@ endif # NETWORK_FILESYSTEMS
 
 source "fs/nls/Kconfig"
 source "fs/dlm/Kconfig"
-
-#ifdef OPLUS_FEATURE_EXFAT_SUPPORT
-#huyu@BSP.Storage, 2020/04/08, Add for exfat filesystem
-source "fs/exfat/Kconfig"
-#endif /*OPLUS_FEATURE_EXFAT_SUPPORT*/
 source "fs/unicode/Kconfig"
 
 endmenu

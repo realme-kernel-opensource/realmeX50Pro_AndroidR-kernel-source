@@ -31,10 +31,6 @@
 #include <linux/debugfs.h>
 #include <asm/sections.h>
 #include <soc/qcom/minidump.h>
-#ifdef OPLUS_FEATURE_AGINGTEST
-/* Yong.Qian@bsp.kernel.stability, 2020/5/14, Add for dump reason */
-#include <linux/soc/qcom/smem.h>
-#endif /*OPLUS_FEATURE_AGINGTEST*/
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
@@ -130,11 +126,6 @@ void nmi_panic(struct pt_regs *regs, const char *msg)
 }
 EXPORT_SYMBOL(nmi_panic);
 
-#ifdef CONFIG_OPLUS_FEATURE_PANIC_FLUSH
-/* yawnu@TECH.Storage.FS.oF2FS, 2019/09/13, flush device cache in panic if necessary */
-extern int panic_flush_device_cache(int timeout);
-#endif
-
 /**
  *	panic - halt the system
  *	@fmt: The text string to print
@@ -151,10 +142,7 @@ void panic(const char *fmt, ...)
 	int state = 0;
 	int old_cpu, this_cpu;
 	bool _crash_kexec_post_notifiers = crash_kexec_post_notifiers;
-#ifdef OPLUS_FEATURE_AGINGTEST
-/* Yong.Qian@bsp.kernel.stability, 2020/5/14, Add for dump reason */
-	char *function_name;
-#endif /*OPLUS_FEATURE_AGINGTEST*/
+
 	/*
 	 * Disable local interrupts. This will prevent panic_smp_self_stop
 	 * from deadlocking the first cpu that invokes the panic, since
@@ -191,17 +179,7 @@ void panic(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 	dump_stack_minidump(0);
-#ifdef CONFIG_OPLUS_FEATURE_PANIC_FLUSH
-/* yawnu@TECH.Storage.FS.oF2FS, 2019/09/13, flush device cache in panic if necessary */
-	panic_flush_device_cache(2000);
-#endif
 	pr_emerg("Kernel panic - not syncing: %s\n", buf);
-#ifdef OPLUS_FEATURE_AGINGTEST
-/* Yong.Qian@bsp.kernel.stability, 2020/5/14, Add for dump reason */
-	function_name = parse_function_builtin_return_address((unsigned long)__builtin_return_address(0));
-	save_dump_reason_to_smem(buf, function_name);
-#endif /*OPLUS_FEATURE_AGINGTEST*/
-
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 	/*
 	 * Avoid nested stack-dumping if a panic occurs during oops processing

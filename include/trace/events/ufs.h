@@ -128,26 +128,6 @@ TRACE_EVENT(ufshcd_clk_scaling,
 		__entry->prev_state, __entry->curr_state)
 );
 
-TRACE_EVENT(ufshcd_clkgate_active_reqs_change,
-	TP_PROTO(int state, const char *cal),
-
-	TP_ARGS(state,cal),
-
-	TP_STRUCT__entry(
-		__field(int, state)
-		__string(cal, cal)
-	),
-
-	TP_fast_assign(
-		__entry->state= state;
-		__assign_str(cal, cal);
-	),
-
-	TP_printk("clkgate active req change to : %d, caller1: %s",
-			 __entry->state,
-			__get_str(cal))
-);
-
 DECLARE_EVENT_CLASS(ufshcd_profiling_template,
 	TP_PROTO(const char *dev_name, const char *profile_info, s64 time_us,
 		 int err),

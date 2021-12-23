@@ -65,13 +65,7 @@ enum MHI_DEBUG_LEVEL msg_lvl = MHI_MSG_LVL_ERROR;
 
 #ifdef CONFIG_MHI_DEBUG
 
-#ifdef OPLUS_BUG_STABILITY
-// Bin.Xu@BSP.Kernel.stability,2020-8-5, add for mhi debug enhance
-#define MHI_UCI_IPC_LOG_PAGES (100)
-#else
-#define MHI_UCI_IPC_LOG_PAGES (25) 
-#endif /* OPLUS_BUG_STABILITY */
-
+#define MHI_UCI_IPC_LOG_PAGES (25)
 #define MSG_VERB(fmt, ...) do { \
 		if (msg_lvl <= MHI_MSG_LVL_VERBOSE) \
 			pr_err("[D][%s] " fmt, __func__, ##__VA_ARGS__); \

@@ -850,24 +850,6 @@ static int show_smap(struct seq_file *m, void *v)
 
 	smap_gather_stats(vma, &mss);
 
-	#ifdef VENDOR_EDIT //yixue.ge@bsp.drv modify for android.bg get pss too slow
-	if (strcmp(current->comm, "android.bg") == 0) {
-		if ((unsigned long)(mss.pss >> (10 + PSS_SHIFT)) > 0) {
-			SEQ_PUT_DEC(" kB\nPss:            ", mss.pss >> PSS_SHIFT);
-		}
-		if ((mss.private_clean >> 10) > 0) {
-			SEQ_PUT_DEC(" kB\nPrivate_Clean:  ", mss.private_clean);
-		}
-		if ((mss.private_dirty >> 10) > 0) {
-			SEQ_PUT_DEC(" kB\nPrivate_Dirty:  ", mss.private_dirty);
-		}
-
-		seq_puts(m, " kB\n");
-		m_cache_vma(m, vma);
-		return 0;
-	}
-	#endif /*VENDOR_EDIT*/
-	
 	show_map_vma(m, vma);
 	if (vma_get_anon_name(vma)) {
 		seq_puts(m, "Name:           ");
@@ -1011,10 +993,6 @@ const struct file_operations proc_pid_smaps_rollup_operations = {
 	.llseek		= seq_lseek,
 	.release	= smaps_rollup_release,
 };
-
-#if defined(OPLUS_FEATURE_VIRTUAL_RESERVE_MEMORY) && defined(CONFIG_VIRTUAL_RESERVE_MEMORY)
-#include "reserve_mmap.c"
-#endif
 
 enum clear_refs_types {
 	CLEAR_REFS_ALL = 1,
@@ -1708,7 +1686,7 @@ static void proc_reclaim_notify(unsigned long pid, void *rp)
 }
 
 int reclaim_address_space(struct address_space *mapping,
-			struct reclaim_param *rp)
+			struct reclaim_param *rp, struct vm_area_struct *vma)
 {
 	struct radix_tree_iter iter;
 	void __rcu **slot;
@@ -1749,14 +1727,7 @@ int reclaim_address_space(struct address_space *mapping,
 		}
 	}
 	rcu_read_unlock();
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-    /* Kui.Zhang@BSP.Kernel.MM, 2020/8//3, relciam memory with scan walk info
-     * while PROCESS_RECLAIM_ENHANCE is enabled.
-     */
-	reclaimed = reclaim_pages_from_list(&page_list, NULL, NULL);
-#else
-	reclaimed = reclaim_pages_from_list(&page_list, NULL);
-#endif
+	reclaimed = reclaim_pages_from_list(&page_list, vma);
 	rp->nr_reclaimed += reclaimed;
 
 	if (rp->nr_scanned >= rp->nr_to_reclaim)
@@ -1816,12 +1787,7 @@ cont:
 			break;
 	}
 	pte_unmap_unlock(pte - 1, ptl);
-#if defined(OPLUS_FEATURE_PROCESS_RECLAIM) && defined(CONFIG_PROCESS_RECLAIM_ENHANCE)
-	reclaimed = reclaim_pages_from_list(&page_list, vma, NULL);
-#else
 	reclaimed = reclaim_pages_from_list(&page_list, vma);
-#endif
-
 	rp->nr_reclaimed += reclaimed;
 	rp->nr_to_reclaim -= reclaimed;
 	if (rp->nr_to_reclaim < 0)
@@ -1855,7 +1821,7 @@ struct reclaim_param reclaim_task_nomap(struct task_struct *task,
 		goto out;
 	down_read(&mm->mmap_sem);
 
-	proc_reclaim_notify((unsigned long)task_pid(task), (void *)&rp);
+	proc_reclaim_notify(task_tgid_nr(task), (void *)&rp);
 
 	up_read(&mm->mmap_sem);
 	mmput(mm);

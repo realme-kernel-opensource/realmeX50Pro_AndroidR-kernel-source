@@ -27,7 +27,6 @@
 
 #include <net/netfilter/nf_conntrack_tuple.h>
 
-#define OPLUS_FEATURE_WIFI_LUCKYMONEY
 /* per conntrack: protocol private data */
 union nf_conntrack_proto {
 	/* insert conntrack proto private data here */
@@ -87,26 +86,6 @@ struct nf_conn {
 #endif
 	/* all members below initialized via memset */
 	u8 __nfct_init_offset[0];
-        //#ifdef OPLUS_FEATURE_WIFI_SLA
-        //HuangJunyuan@CONNECTIVITY.WIFI.INTERNET.1197891, 2018/04/10,Add code for appo sla function
-	u32 oppo_game_skb_len;
-	u32 oppo_game_detect_status;
-	u32 oppo_game_time_interval;
-	u32 oppo_game_up_count;
-	u32 oppo_game_down_count;
-	u32 oppo_game_lost_count;
-	u32 oppo_game_same_count;
-	u32 oppo_http_flag;
-	u32 oppo_skb_count;
-	int oppo_app_type;
-	s64 oppo_game_timestamp;
-	s64 oppo_game_last_timestamp;
-	//#endif /* OPLUS_FEATURE_WIFI_SLA */
-
-	#ifdef OPLUS_FEATURE_WIFI_LUCKYMONEY
-	//HuangYuan@CONNECTIVITY.WIFI.INTERNET, 2018/06/18, Add for WeChat lucky money recognition
-	u32 oppo_app_uid;
-	#endif /* OPLUS_FEATURE_WIFI_LUCKYMONEY */
 
 	/* If we were expected by an expectation, this will be it */
 	struct nf_conn *master;
