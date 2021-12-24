@@ -780,38 +780,6 @@ struct smb_charger {
 #endif
 };
 
-struct smb_dt_props {
-	int			usb_icl_ua;
-	struct device_node	*revid_dev_node;
-	enum float_options	float_option;
-	int			chg_inhibit_thr_mv;
-	bool			no_battery;
-	bool			hvdcp_disable;
-#ifdef OPLUS_FEATURE_CHG_BASIC
-/* Jianchao.Shi@BSP.CHG.Basic, 2019/02/22, sjc Add for QC */
-	bool		qc3_disable;
-#endif
-	bool			hvdcp_autonomous;
-	bool			adc_based_aicl;
-	int			sec_charger_config;
-	int			auto_recharge_soc;
-	int			auto_recharge_vbat_mv;
-	int			wd_bark_time;
-	int			wd_snarl_time_cfg;
-	int			batt_profile_fcc_ua;
-	int			batt_profile_fv_uv;
-	int			term_current_src;
-	int			term_current_thresh_hi_ma;
-	int			term_current_thresh_lo_ma;
-	int			disable_suspend_on_collapse;
-};
-
-struct smb5 {
-	struct smb_charger	chg;
-	struct dentry		*dfs_root;
-	struct smb_dt_props	dt;
-};
-
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val);
 int smblib_masked_write(struct smb_charger *chg, u16 addr, u8 mask, u8 val);
 int smblib_write(struct smb_charger *chg, u16 addr, u8 val);
